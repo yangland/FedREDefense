@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 
 
 def save_results(results_dict, path, name, verbose=True):
-    results_numpy = {key : np.array(value)for key, value in results_dict.items()}
+    # print("results_dict", results_dict)
+    results_numpy = {key : np.array(value) for key, value in results_dict.items()}
 
     if not os.path.exists(path):
         os.makedirs(path)
