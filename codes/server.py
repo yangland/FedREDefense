@@ -203,3 +203,12 @@ class Server(Device):
       for name in self.parameter_dict[model_name]:
         self.parameter_dict[model_name][name].data = self.parameter_dict[model_name][name].data + clipped_models[idx:(idx+self.parameter_dict[model_name][name].data.numel())].reshape(self.parameter_dict[model_name][name].data.shape)
         idx += self.parameter_dict[model_name][name].data.numel()
+
+  # adding RLR aggregation rule from FLAME (https://github.com/zhmzm/FLAME)
+  def RLR(self, clients, robustLR_threshold):
+    unique_client_model_names = np.unique(
+      [client.model_name for client in clients])
+    for model_name in unique_client_model_names:
+       reduce_RLR(target=self.parameter_dict[model_name], 
+                          sources=[client.W for client in clients if client.model_name == model_name], 
+                          robustLR_threshold = robustLR_threshold)

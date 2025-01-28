@@ -1,5 +1,5 @@
 cmdargs=$1
-#"FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
+#"FedAVG","median", "NormBound","trmean","krum","flame"
 export CUDA_VISIBLE_DEVICES='0'
 hyperparameters04='[{
     "random_seed" : [4],
@@ -16,13 +16,12 @@ hyperparameters04='[{
     "local_epochs" : [1],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["RLR"],
+    "aggregation_mode" : ["NormBound", "FedAVG"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
-    "log_path" : ["new_noniid/"],
-    "robustLR_threshold" : [4] }]
-    
+    "log_path" : ["new_noniid/"]}]
+
 '
 
 

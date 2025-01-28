@@ -801,3 +801,81 @@ def olr(mu, var):
         index += 1
     overlap = (1 - G_m.cdf(x)) + G_b.cdf(x)
     return overlap
+
+
+# adding RLR aggregation rule from FLAME (https://github.com/zhmzm/FLAME)
+def reduce_RLR(target, sources, robustLR_threshold):
+  """
+  agent_updates_dict: dict['key']=one_dimension_update
+  agent_updates_list: list[0] = model.dict
+  global_model: net
+  """
+  # robustLR_threshold
+  server_lr = 1  
+
+  grad_list = []
+  for i in sources:
+    grad_list.append(parameters_dict_to_vector_rlr(i))
+  agent_updates_list = grad_list
+
+  aggregated_updates = 0  
+  for update in agent_updates_list:
+    # print(update.shape)  # torch.Size([317706])
+    aggregated_updates += update
+
+  aggregated_updates /= len(agent_updates_list)
+  lr_vector = compute_robustLR(agent_updates_list, robustLR_threshold, server_lr)
+  cur_global_params = parameters_dict_to_vector_rlr(target)
+  new_global_params = (cur_global_params + lr_vector*aggregated_updates).float() 
+  global_w = vector_to_parameters_dict(new_global_params, target)
+  # print(cur_global_params == vector_to_parameters_dict(new_global_params, global_model.state_dict()))
+  # return global_w
+  print("global_w", global_w)
+  for name in target:
+    target[name].data = global_w[name].clone()
+
+
+  
+def compute_robustLR(params, robustLR_threshold, server_lr):
+  agent_updates_sign = [torch.sign(update) for update in params]  
+  sm_of_signs = torch.abs(sum(agent_updates_sign))
+  # print(len(agent_updates_sign)) #10
+  # print(agent_updates_sign[0].shape) #torch.Size([1199882])
+  sm_of_signs[sm_of_signs < robustLR_threshold] = -server_lr
+  sm_of_signs[sm_of_signs >= robustLR_threshold] = server_lr 
+  return sm_of_signs.to(device)
+
+def parameters_dict_to_vector_rlr(net_dict) -> torch.Tensor:
+    r"""Convert parameters to one vector
+
+    Args:
+        parameters (Iterable[Tensor]): an iterator of Tensors that are the
+            parameters of a model.
+
+    Returns:
+        The parameters represented by a single vector
+    """
+    vec = []
+    for key, param in net_dict.items():
+        vec.append(param.view(-1))
+    return torch.cat(vec)
+
+def vector_to_parameters_dict(vec: torch.Tensor, net_dict) -> None:
+    r"""Convert one vector to the parameters
+
+    Args:
+        vec (Tensor): a single vector represents the parameters of a model.
+        parameters (Iterable[Tensor]): an iterator of Tensors that are the
+            parameters of a model.
+    """
+
+    pointer = 0
+    for param in net_dict.values():
+        # The length of the parameter
+        num_param = param.numel()
+        # Slice the vector, reshape it, and replace the old data of the parameter
+        param.data = vec[pointer:pointer + num_param].view_as(param).data
+
+        # Increment the pointer
+        pointer += num_param
+    return net_dict

@@ -180,6 +180,8 @@ def run_experiment(xp, xp_count, n_experiments):
       server.TrimmedMean(participating_clients, hp["attack_rate"])
     elif hp["aggregation_mode"] == "krum":
       server.krum(participating_clients, hp["attack_rate"])
+    elif hp["aggregation_mode"] == "RLR":
+      server.RLR(participating_clients, hp["robustLR_threshold"])
     else:
       import pdb; pdb.set_trace()
     if xp.is_log_round(c_round):
