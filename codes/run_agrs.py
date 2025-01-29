@@ -182,6 +182,9 @@ def run_experiment(xp, xp_count, n_experiments):
       server.krum(participating_clients, hp["attack_rate"])
     elif hp["aggregation_mode"] == "RLR":
       server.RLR(participating_clients, hp["robustLR_threshold"])
+    elif hp["aggregation_mode"] == "flame":
+      server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"], 
+                    hp["right_ben"], hp["noise"], hp["turn"])
     else:
       import pdb; pdb.set_trace()
     if xp.is_log_round(c_round):

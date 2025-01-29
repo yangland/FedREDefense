@@ -212,3 +212,13 @@ class Server(Device):
        reduce_RLR(target=self.parameter_dict[model_name], 
                           sources=[client.W for client in clients if client.model_name == model_name], 
                           robustLR_threshold = robustLR_threshold)
+       
+  def flame(self, clients, malicious, wrong_mal, right_ben, noise, turn):
+    unique_client_model_names = np.unique([client.model_name for client in clients])
+    for model_name in unique_client_model_names:
+      reduce_flame(target=self.parameter_dict[model_name], sources=[client.W for client in clients if client.model_name == model_name], 
+                   malicious = malicious,
+                   wrong_mal = wrong_mal,
+                   right_ben = right_ben,
+                   noise = noise,
+                   turn=turn)
