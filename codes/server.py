@@ -4,6 +4,7 @@ from utils import *
 from client import Device
 import hdbscan
 from utils import kd_loss, DiffAugment
+import sklearn.metrics.pairwise as smp
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def cos_sim_nd(tensor1, tensor2):
@@ -222,3 +223,13 @@ class Server(Device):
                    right_ben = right_ben,
                    noise = noise,
                    turn=turn)
+  
+  def foolsgold(self, clients):
+    unique_client_model_names = np.unique(
+      [client.model_name for client in clients])
+    for model_name in unique_client_model_names:
+       reduce_foolsgold(target=self.parameter_dict[model_name], 
+                          sources=[client.W for client in clients if client.model_name == model_name])
+    
+    
+

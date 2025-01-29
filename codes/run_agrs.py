@@ -185,6 +185,8 @@ def run_experiment(xp, xp_count, n_experiments):
     elif hp["aggregation_mode"] == "flame":
       server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"], 
                     hp["right_ben"], hp["noise"], hp["turn"])
+    elif hp["aggregation_mode"] == "foolsgold":
+      server.foolsgold(participating_clients, )
     else:
       import pdb; pdb.set_trace()
     if xp.is_log_round(c_round):

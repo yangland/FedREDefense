@@ -16,7 +16,7 @@ hyperparameters04='[{
     "local_epochs" : [1],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["flame"],
+    "aggregation_mode" : ["foolsgold"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
