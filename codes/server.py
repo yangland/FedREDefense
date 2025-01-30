@@ -141,6 +141,7 @@ class Server(Device):
 
   def fedavg(self, clients):
     unique_client_model_names = np.unique([client.model_name for client in clients])
+    # print("fedavg unique_client_model_names", unique_client_model_names) # ['ConvNet']
     self.weights = torch.Tensor([1. / len(clients)] * len(clients))
     for model_name in unique_client_model_names:
       reduce_average(target=self.parameter_dict[model_name], sources=[client.W for client in clients if client.model_name == model_name])
@@ -230,6 +231,3 @@ class Server(Device):
     for model_name in unique_client_model_names:
        reduce_foolsgold(target=self.parameter_dict[model_name], 
                           sources=[client.W for client in clients if client.model_name == model_name])
-    
-    
-

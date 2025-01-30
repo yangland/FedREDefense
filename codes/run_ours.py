@@ -134,6 +134,8 @@ def run_experiment(xp, xp_count, n_experiments):
           print(i)
           if hp["attack_method"] == "label_flip":
             clients.append(Client_flip(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']))
+          elif hp["attack_method"] == "targeted_label_flip":
+            clients.append(Client_tr_flip(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']))
           elif hp["attack_method"] == "Fang":
             clients.append(Client_Fang(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
           elif hp["attack_method"] == "MPAF":
@@ -185,7 +187,7 @@ def run_experiment(xp, xp_count, n_experiments):
     participating_clients = server.select_clients_masked(clients, hp["participation_rate"],clients_flags)
     print({"Remaining Client Count": sum(clients_flags )})
     xp.log({"participating_clients" : np.array([c.id for c in participating_clients])})
-    if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum"]:
+    if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "UAM"]:
       mali_clients = []
       flag = False
       for client in participating_clients:
@@ -201,9 +203,12 @@ def run_experiment(xp, xp_count, n_experiments):
           client.mal_user_grad_mean2 = mal_user_grad_mean2
           client.mal_user_grad_std2 = mal_user_grad_std2
           client.all_updates = all_updates
+          client.benigh_update = client.W.copy()
+          
     
     for client in participating_clients:
       client.synchronize_with_server(server)
+      print("client.id", client.id)
       train_stats = client.compute_weight_update(hp["local_epochs"])
           
     if "REDefense" in hp["aggregation_mode"]:

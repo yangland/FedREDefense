@@ -357,7 +357,7 @@ def train_op_backdoor(model, loader, optimizer, epochs, class_num=10):
 
 
 
-def train_op_dba(model, loader, optimizer, epochs,cid,  class_num=10):
+def train_op_dba(model, loader, optimizer, epochs, cid, class_num=10):
     model.train() 
     import random
     W0 = {k : v.detach().clone() for k, v in model.named_parameters()}
@@ -436,8 +436,8 @@ def train_op_tr_flip(model, loader, optimizer, epochs, class_num=10):
     running_loss, samples = 0.0, 0
     for ep in range(epochs):
         for x, y in loader:
-
-            y[y==0] =2
+            # modify 0 to 2
+            y[y==0] =2 
             x, y = x.to(device), y.to(device)
 
             optimizer.zero_grad()
@@ -716,6 +716,7 @@ def reduce_trimmed_mean(target, sources, mali_ratio):
     #   import pdb; pdb.set_trace()
 
 def flat_grad(target, sources):
+    # convert sources into flat touch tensors
     user_flatten_grad = []
     for source in sources:
         user_flatten_grad_i = []
@@ -726,6 +727,12 @@ def flat_grad(target, sources):
     user_flatten_grad = torch.stack(user_flatten_grad)
     return user_flatten_grad
 
+def flat_dict_grad(grad_dict):
+    user_flatten_grad = []
+    for name, grad in grad_dict.items():
+        user_flatten_grad.append(torch.flatten(grad.detach()))
+    user_flatten_grad = torch.cat(user_flatten_grad)
+    return user_flatten_grad
 
 def reduce_krum(target, sources, mali_ratio):
     import math
@@ -937,75 +944,6 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             var += temp
 
 
-# def reduce_flame_org(local_model, update_params, global_model, args):
-#     cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6).cuda()
-#     cos_list=[]
-#     local_model_vector = []
-#     for param in local_model:
-#         # local_model_vector.append(parameters_dict_to_vector_flt_cpu(param))
-#         local_model_vector.append(parameters_dict_to_vector_flt(param))
-#     for i in range(len(local_model_vector)):
-#         cos_i = []
-#         for j in range(len(local_model_vector)):
-#             cos_ij = 1- cos(local_model_vector[i],local_model_vector[j])
-#             # cos_i.append(round(cos_ij.item(),4))
-#             cos_i.append(cos_ij.item())
-#         cos_list.append(cos_i)
-#     num_clients = max(int(args.frac * args.num_users), 1)
-#     num_malicious_clients = int(args.malicious * num_clients)
-#     num_benign_clients = num_clients - num_malicious_clients
-#     clusterer = hdbscan.HDBSCAN(min_cluster_size=num_clients//2 + 1,min_samples=1,allow_single_cluster=True).fit(cos_list)
-#     print(clusterer.labels_)
-#     benign_client = []
-#     norm_list = np.array([])
-
-#     max_num_in_cluster=0
-#     max_cluster_index=0
-#     if clusterer.labels_.max() < 0:
-#         for i in range(len(local_model)):
-#             benign_client.append(i)
-#             norm_list = np.append(norm_list,torch.norm(parameters_dict_to_vector(update_params[i]),p=2).item())
-#     else:
-#         for index_cluster in range(clusterer.labels_.max()+1):
-#             if len(clusterer.labels_[clusterer.labels_==index_cluster]) > max_num_in_cluster:
-#                 max_cluster_index = index_cluster
-#                 max_num_in_cluster = len(clusterer.labels_[clusterer.labels_==index_cluster])
-#         for i in range(len(clusterer.labels_)):
-#             if clusterer.labels_[i] == max_cluster_index:
-#                 benign_client.append(i)
-#     for i in range(len(local_model_vector)):
-#         # norm_list = np.append(norm_list,torch.norm(update_params_vector[i],p=2))  # consider BN
-#         norm_list = np.append(norm_list,torch.norm(parameters_dict_to_vector(update_params[i]),p=2).item())  # no consider BN
-#     print(benign_client)
-   
-#     for i in range(len(benign_client)):
-#         if benign_client[i] < num_malicious_clients:
-#             args.wrong_mal+=1
-#         else:
-#             #  minus per benign in cluster
-#             args.right_ben += 1
-#     args.turn+=1
-#     print('proportion of malicious are selected:',args.wrong_mal/(num_malicious_clients*args.turn))
-#     print('proportion of benign are selected:',args.right_ben/(num_benign_clients*args.turn))
-    
-#     clip_value = np.median(norm_list)
-#     for i in range(len(benign_client)):
-#         gama = clip_value/norm_list[i]
-#         if gama < 1:
-#             for key in update_params[benign_client[i]]:
-#                 if key.split('.')[-1] == 'num_batches_tracked':
-#                     continue
-#                 update_params[benign_client[i]][key] *= gama
-#     global_model = no_defence_balance([update_params[i] for i in benign_client], global_model)
-#     #add noise
-#     for key, var in global_model.items():
-#         if key.split('.')[-1] == 'num_batches_tracked':
-#                     continue
-#         temp = copy.deepcopy(var)
-#         temp = temp.normal_(mean=0,std=args.noise*clip_value)
-#         var += temp
-#     return global_model
-
 def reduce_foolsgold(target, sources):
     n_clients = len(sources)
     # grads = []
@@ -1044,8 +982,9 @@ def reduce_foolsgold(target, sources):
         wv = (np.log(wv / (1 - wv)) + 0.5)
         wv[(np.isinf(wv) + wv > 1)] = 1
         wv[(wv < 0)] = 0
-
-    reduce_weighted(target, sources, torch.tensor(wv).to(device))
+    wv_normal = [x / sum(wv) for x in wv]
+    
+    reduce_weighted(target, sources, torch.tensor(wv_normal).to(device))
 
 def parameters_dict_to_vector_rlr(net_dict) -> torch.Tensor:
     r"""Convert parameters to one vector

@@ -124,6 +124,8 @@ def run_experiment(xp, xp_count, n_experiments):
             clients.append(Client_Scaling(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
           elif hp["attack_method"] == "DBA":
             clients.append(Client_DBA(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
+          elif hp["attack_method"] == "UAM":
+            clients.append(Client_UAM(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
           else:
             import pdb; pdb.set_trace()  
 
@@ -147,7 +149,7 @@ def run_experiment(xp, xp_count, n_experiments):
     participating_clients = server.select_clients(clients, hp["participation_rate"])
     xp.log({"participating_clients" : np.array([c.id for c in participating_clients])})
     
-    if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum","KrumAtt"]:
+    if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM"]:
       mali_clients = []
       flag = False
       for client in participating_clients:
@@ -159,11 +161,15 @@ def run_experiment(xp, xp_count, n_experiments):
       if flag == True:
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_benign_updates(mali_clients, server)
       for client in participating_clients:
-        if client.id >= (1 - hp["attack_rate"])* len(client_loaders):
+        if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
           client.mal_user_grad_mean2 = mal_user_grad_mean2
           client.mal_user_grad_std2 = mal_user_grad_std2
           client.all_updates = all_updates
+          client.benign_update = client.W.copy()
+          
+
     
+    # benign and malicous clients compute weight update
     for client in participating_clients:
       client.synchronize_with_server(server)
       train_stats = client.compute_weight_update(hp["local_epochs"])
@@ -186,7 +192,7 @@ def run_experiment(xp, xp_count, n_experiments):
       server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"], 
                     hp["right_ben"], hp["noise"], hp["turn"])
     elif hp["aggregation_mode"] == "foolsgold":
-      server.foolsgold(participating_clients, )
+      server.foolsgold(participating_clients)
     else:
       import pdb; pdb.set_trace()
     if xp.is_log_round(c_round):
@@ -195,6 +201,7 @@ def run_experiment(xp, xp_count, n_experiments):
       eval_result = server.evaluate_ensemble().items()
       xp.log({"server_val_{}".format(key) : value for key, value in eval_result })
       print({"server_{}_a_{}".format(key, hp["alpha"]) : value for key, value in eval_result})
+      #TODO add UAM's attack effects
       if hp["attack_method"] in ["DBA", "Scaling", "Backdoor"]:
         att_result = server.evaluate_attack().items()
         xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})

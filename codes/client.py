@@ -46,6 +46,7 @@ class Client(Device):
 
     self.optimizer_fn = optimizer_fn
     self.optimizer = self.optimizer_fn(self.model.parameters())
+    self.benign_update = None
 
   def synchronize_with_server(self, server):
     server_state = server.model_dict[self.model_name].state_dict()
@@ -177,6 +178,7 @@ class Client_MinMax(Device):
     self.mal_user_grad_mean2 = None
     self.mal_user_grad_std2 = None
     self.all_updates = None
+    self.benign_update = None
     
   def synchronize_with_server(self, server):
     server_state = server.model_dict[self.model_name].state_dict()
@@ -269,6 +271,7 @@ class Client_MinSum(Device):
     self.mal_user_grad_mean2 = None
     self.mal_user_grad_std2 = None
     self.all_updates = None
+    self.benign_update = None
     
   def synchronize_with_server(self, server):
     server_state = server.model_dict[self.model_name].state_dict()
@@ -424,6 +427,7 @@ class Client_Krum(Device):
     self.mal_user_grad_mean2 = None
     self.mal_user_grad_std2 = None
     self.all_updates = None
+    self.benign_update = None
     
   def compute_weight_benign_update(self, epochs=1, loader=None):
     train_stats = train_op(self.model, self.loader if not loader else loader, self.optimizer, epochs)
@@ -482,6 +486,7 @@ class Client_Krum(Device):
       y_ = self.model(x)
 
     return y_
+  
 class Client_Fang(Device):
   def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10'):
     super().__init__(loader)
@@ -499,6 +504,7 @@ class Client_Fang(Device):
     self.mal_user_grad_mean2 = None
     self.mal_user_grad_std2 = None
     self.all_updates = None
+    self.benign_update = None
     
   def compute_weight_benign_update(self, epochs=1, loader=None):
     train_stats = train_op(self.model, self.loader if not loader else loader, self.optimizer, epochs)
@@ -646,6 +652,7 @@ class Client_Scaling(Device):
       y_ = self.model(x)
 
     return y_
+  
   def predict_logit_eval(self, x):
     """Softmax prediction on input"""
     self.model.eval()
@@ -669,11 +676,11 @@ class Client_DBA(Device):
     self.optimizer_fn = optimizer_fn
     self.optimizer = self.optimizer_fn(self.model.parameters())
     self.scale = 3
+
   def synchronize_with_server(self, server):
     self.server_state = server.model_dict[self.model_name].state_dict()
     self.model.load_state_dict(self.server_state, strict=False)
 
-    
   def compute_weight_update(self, epochs=1, loader=None):
     train_stats = train_op_dba(self.model, self.loader, self.optimizer, epochs, cid = self.id)
     
@@ -702,3 +709,67 @@ class Client_DBA(Device):
 
     return y_
   
+  
+class Client_UAM(Device):
+  def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10'):
+    super().__init__(loader)
+    self.id = idnum
+    print(f"dataset client {dataset}")
+    self.model_name = model_name
+    self.model_fn = partial(model_utils.get_model(self.model_name)[0], num_classes=num_classes , dataset = dataset)
+    self.model = self.model_fn().to(device)
+
+    self.W = {key : value for key, value in self.model.named_parameters()}
+    self.init_model = None
+    self.optimizer_fn = optimizer_fn
+    self.optimizer = self.optimizer_fn(self.model.parameters())
+    self.scale = 3
+    self.benign_update = None
+    
+  def synchronize_with_server(self, server):
+    self.server_state = server.model_dict[self.model_name].state_dict()
+    self.model.load_state_dict(self.server_state, strict=False)
+
+  def compute_weight_benign_update(self, epochs=1, loader=None):
+    train_stats = train_op(self.model, self.loader if not loader else loader, self.optimizer, epochs)
+    return train_stats
+
+  def compute_weight_update(self, epochs=1, loader=None):
+    # import pdb; pdb.set_trace()
+    user_grad = OrderedDict()
+    # import pdb; pdb.set_trace()
+    #TODO add 1.feedback 2.searching algo 3.construct attack
+    
+    # Calculate the cos similiaty between the mean of benign_updates of malicous client and each malicoius client
+    cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+    cos_simility_per_layer = dict()
+    print("id2", self.id)
+    # print("self.benign_update", self.benign_update)
+    for name in self.W:
+      cos_simility_per_layer[name] = cos(torch.flatten(self.mal_user_grad_mean2[name].detach()), 
+                                      torch.flatten(self.benign_update[name])).item()
+    cos_simility_flat = cos(flat_dict_grad(self.mal_user_grad_mean2), flat_dict_grad(self.benign_update)).item()
+    print("cos_simility_per_layer", cos_simility_per_layer) 
+    print("cos_simility_flat", cos_simility_flat)
+
+
+    for name in self.W:
+      user_grad[name] = self.init_model[name] - self.W[name].detach()
+      self.W[name].data = self.server_state[name] + self.scale*user_grad[name]
+
+  def predict_logit(self, x):
+    """Softmax prediction on input"""
+    self.model.train()
+
+    with torch.no_grad():
+      y_ = self.model(x)
+
+    return y_
+  
+  def predict_logit_eval(self, x):
+    """Softmax prediction on input"""
+    self.model.eval()
+    with torch.no_grad():
+      y_ = self.model(x)
+
+    return y_

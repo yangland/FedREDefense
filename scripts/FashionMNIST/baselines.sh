@@ -8,7 +8,7 @@ hyperparameters04='[{
     "models" : [{"ConvNet" : 100}],
 
     "attack_rate" :  [0.28],
-    "attack_method": ["Fang"],
+    "attack_method": ["UAM"],
     "participation_rate" : [1],
 
     "alpha" : [0.1],
@@ -16,7 +16,7 @@ hyperparameters04='[{
     "local_epochs" : [1],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["foolsgold"],
+    "aggregation_mode" : ["FedAVG"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
