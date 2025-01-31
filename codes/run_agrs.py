@@ -195,6 +195,7 @@ def run_experiment(xp, xp_count, n_experiments):
           cos_score, _ = client.compute_cos_simility_to_mean()
           benign_cos_dict[client.id] = cos_score
         print("benign_cos_dict", benign_cos_dict)
+        
         # 2. UAM conduct maliocus training on the pooled dataset
         uam_malicc.synchronize_with_server(server)
         mali_stats = uam_malicc.compute_weight_mali_update(hp["local_epochs"])
