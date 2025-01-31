@@ -714,7 +714,7 @@ class Client_UAM(Device):
   def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10'):
     super().__init__(loader)
     self.id = idnum
-    print(f"dataset client {dataset}")
+    # print(f"dataset client {dataset}")
     self.model_name = model_name
     self.model_fn = partial(model_utils.get_model(self.model_name)[0], num_classes=num_classes , dataset = dataset)
     self.model = self.model_fn().to(device)
@@ -733,25 +733,26 @@ class Client_UAM(Device):
   def compute_weight_benign_update(self, epochs=1, loader=None):
     train_stats = train_op(self.model, self.loader if not loader else loader, self.optimizer, epochs)
     return train_stats
-
-  def compute_weight_update(self, epochs=1, loader=None):
-    # import pdb; pdb.set_trace()
-    user_grad = OrderedDict()
-    # import pdb; pdb.set_trace()
-    #TODO add 1.feedback 2.searching algo 3.construct attack
-    
+  
+  def compute_cos_simility_to_mean(self):
     # Calculate the cos similiaty between the mean of benign_updates of malicous client and each malicoius client
     cos = nn.CosineSimilarity(dim=0, eps=1e-9)
     cos_simility_per_layer = dict()
-    print("id2", self.id)
-    # print("self.benign_update", self.benign_update)
+
     for name in self.W:
       cos_simility_per_layer[name] = cos(torch.flatten(self.mal_user_grad_mean2[name].detach()), 
                                       torch.flatten(self.benign_update[name])).item()
     cos_simility_flat = cos(flat_dict_grad(self.mal_user_grad_mean2), flat_dict_grad(self.benign_update)).item()
-    print("cos_simility_per_layer", cos_simility_per_layer) 
-    print("cos_simility_flat", cos_simility_flat)
+    # print("cos_simility_per_layer", cos_simility_per_layer) 
+    # print("cos_simility_flat", cos_simility_flat)
+    return cos_simility_flat, cos_simility_per_layer
 
+
+
+	#TODO construct malicious model weight based command from search_algo
+  def compute_weight_update(self, epochs=1, loader=None):
+    # import pdb; pdb.set_trace()
+    user_grad = OrderedDict()
 
     for name in self.W:
       user_grad[name] = self.init_model[name] - self.W[name].detach()

@@ -2,7 +2,7 @@ from copy import deepcopy
 import random
 from client import *
 from utils import *
-from server import Server
+from server import Server, MaliCC
 from image_synthesizer import Synthesizer
 import resource
 from sklearn.cluster import KMeans
@@ -11,6 +11,9 @@ from scipy.spatial.distance import cdist, pdist
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
+import math
+from torch.utils.data import ConcatDataset
+
 def reduce_average(target, sources):
   for name in target:
       target[name].data = torch.mean(torch.stack([source[name].detach() for source in sources]), dim=0).clone()
@@ -91,7 +94,7 @@ def run_experiment(xp, xp_count, n_experiments):
   np.random.seed(hp["random_seed"])
   torch.manual_seed(hp["random_seed"])
   train_data = train_data_all
-  client_loaders, test_loader = data.get_loaders(train_data, test_data, n_clients=len(model_names),
+  client_loaders, test_loader, client_data_subsets = data.get_loaders(train_data, test_data, n_clients=len(model_names),
         alpha=hp["alpha"], batch_size=hp["batch_size"], n_data=None, num_workers=4, seed=hp["random_seed"])
   
   # initialize server and clients
@@ -126,11 +129,21 @@ def run_experiment(xp, xp_count, n_experiments):
             clients.append(Client_DBA(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
           elif hp["attack_method"] == "UAM":
             clients.append(Client_UAM(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
+            
+            # initialize the UAM malicious group's command center
+            mali_ids= list(range(math.ceil((1 - hp["attack_rate"])*len(client_loaders)), len(client_loaders)))
+            # print("malicious ids", mali_ids)
+            pooled_mali_ds = ConcatDataset([client_data_subsets[i] for i in mali_ids])
+            pooled_mali_dl = torch.utils.data.DataLoader(pooled_mali_ds, batch_size=hp["batch_size"], shuffle=True, num_workers=4)
+            # mali_clients = [clients[i] for i in mali_ids]
+            uam_malicc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes, dataset = hp['dataset'],
+                                UAM_mode = hp["UAM_mode"])          
           else:
             import pdb; pdb.set_trace()  
 
   print(clients[0].model)
-  
+
+
   server.number_client_all = len(client_loaders)
   
   models.print_model(clients[0].model)
@@ -144,11 +157,11 @@ def run_experiment(xp, xp_count, n_experiments):
   
   print(f"model key {list(server.model_dict.keys())[0]}")
 
-
+  # In each FL communication round
   for c_round in range(1, hp["communication_rounds"]+1):
     participating_clients = server.select_clients(clients, hp["participation_rate"])
     xp.log({"participating_clients" : np.array([c.id for c in participating_clients])})
-    
+    # For attack methods that require benign update from clients to construct the malicious upates
     if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM"]:
       mali_clients = []
       flag = False
@@ -165,15 +178,40 @@ def run_experiment(xp, xp_count, n_experiments):
           client.mal_user_grad_mean2 = mal_user_grad_mean2
           client.mal_user_grad_std2 = mal_user_grad_std2
           client.all_updates = all_updates
+          # malicious clients save the benign_updates
           client.benign_update = client.W.copy()
-          
+      if hp["attack_method"] == "UAM":
+        #TODO Add for UAM's adactive attack
+        # save results in a UAM_hist class
+        # 1. Get feedback from previous attack
+        if hp["UAM_mode"] == "TLP":
+          print("server.parameter_dict", type(server.parameter_dict))
+          print("np.unique(model_names)", np.unique(model_names))
+          att_result_last_round = uam_malicc.evaluate_tr_lf_attack(server.models)
+          uam_malicc.att_result_hist.append(att_result_last_round["accuracy"])
+        
+        benign_cos_dict = {}
+        for client in mali_clients:
+          cos_score, _ = client.compute_cos_simility_to_mean()
+          benign_cos_dict[client.id] = cos_score
+        print("benign_cos_dict", benign_cos_dict)
+        # 2. UAM conduct maliocus training on the pooled dataset
+        uam_malicc.synchronize_with_server(server)
+        mali_stats = uam_malicc.compute_weight_mali_update(hp["local_epochs"])
+        mali_grad = get_updates(uam_malicc, server)
+
+        # 3. Using the searching algorithm to get the parameter for this round
+        # uam_att_parms = uam_malicc.search_algo()
+        # 4. Passing the attack parameters to every client in the communcation round into client.loader
+        pass
 
     
     # benign and malicous clients compute weight update
     for client in participating_clients:
       client.synchronize_with_server(server)
       train_stats = client.compute_weight_update(hp["local_epochs"])
-          
+
+    # server aggregation      
     if hp["aggregation_mode"] == "FedAVG":
       server.fedavg(participating_clients)
     elif hp["aggregation_mode"] == "ABAVG":
@@ -201,16 +239,24 @@ def run_experiment(xp, xp_count, n_experiments):
       eval_result = server.evaluate_ensemble().items()
       xp.log({"server_val_{}".format(key) : value for key, value in eval_result })
       print({"server_{}_a_{}".format(key, hp["alpha"]) : value for key, value in eval_result})
-      #TODO add UAM's attack effects
-      if hp["attack_method"] in ["DBA", "Scaling", "Backdoor"]:
-        att_result = server.evaluate_attack().items()
-        xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
-        print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
-      if hp["attack_method"] in ["targeted_label_flip"]:
-        att_result = server.evaluate_tr_lf_attack().items()
-        xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
-        print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
       
+      # if hp["attack_method"] in ["DBA", "Scaling", "Backdoor"]:
+      #   att_result = server.evaluate_attack().items()
+      #   xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
+      #   print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
+      # if hp["attack_method"] in ["targeted_label_flip"]:
+      #   att_result = server.evaluate_tr_lf_attack().items()
+      #   xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
+      #   print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
+      
+      if hp["attack_method"] in ["DBA", "Scaling", "Backdoor", "targeted_label_flip", "UAM"]:
+        if hp["attack_method"] in ["DBA", "Scaling", "Backdoor"]:
+          att_result = server.evaluate_attack().items()
+        elif hp["attack_method"] in ["targeted_label_flip"]:
+          att_result = server.evaluate_tr_lf_attack().items()
+        xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
+        print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})        
+
       xp.log({"epoch_time" : (time.time()-t1)/c_round})
       stats = server.evaluate_ensemble()
       test_accs.append(stats['test_accuracy'])

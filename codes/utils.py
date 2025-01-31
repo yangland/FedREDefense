@@ -212,6 +212,14 @@ class TensorDataset(Dataset):
         return self.images.shape[0]
 
 
+def get_updates(client, server):
+    user_grad = {}
+    server_weights = server.parameter_dict[client.model_name]    
+    for name in client.W:
+        user_grad[name] = client.W[name].detach() - server_weights[name].detach()    
+    return user_grad
+
+
 def get_benign_updates(mali_clients, server):
     # import pdb; pdb.set_trace()
     

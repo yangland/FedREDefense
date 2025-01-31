@@ -5,13 +5,13 @@ hyperparameters04='[{
     "random_seed" : [4],
 
     "dataset" : ["fmnist"],
-    "models" : [{"ConvNet" : 100}],
+    "models" : [{"ConvNet" : 10}],
 
     "attack_rate" :  [0.28],
     "attack_method": ["UAM"],
     "participation_rate" : [1],
 
-    "alpha" : [0.1],
+    "alpha" : [0.5],
     "communication_rounds" : [300],
     "local_epochs" : [1],
     "batch_size" : [32],
@@ -25,9 +25,9 @@ hyperparameters04='[{
     "wrong_mal" : [0],
     "right_ben" : [0],
     "noise" : [0.001],
-    "turn" : [0]}]
-    
-'
+    "turn" : [0],
+    "UAM_mode": ["TLP"]
+    }]'
 
 
 RESULTS_PATH="results/"

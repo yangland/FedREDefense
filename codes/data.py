@@ -125,7 +125,7 @@ def get_loaders(train_data, test_data, n_clients=10, alpha=0, batch_size=128, n_
   client_loaders = [torch.utils.data.DataLoader(subset, batch_size=batch_size, shuffle=True, num_workers=num_workers) for subset in client_data]
   test_loader = torch.utils.data.DataLoader(test_data, batch_size=256, num_workers=num_workers)
 #   import pdb; pdb.set_trace()
-  return client_loaders, test_loader
+  return client_loaders, test_loader, client_data
 
 def get_loaders_classes(train_data, test_data, n_clients=10, alpha=0, batch_size=128, n_data=None, num_workers=0, seed=0, classes =  [0,2,4], total_num = 1500, indices=None):
     print(f"number of clients {n_clients}")
