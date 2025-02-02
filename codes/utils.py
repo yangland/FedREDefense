@@ -1091,19 +1091,26 @@ def construct_mali_grads(uam_att_params, mali_grad, benign_grad, mali_ids):
     const_grads = []
     for id in mali_ids:
         const_grad = OrderedDict()
+        
+        #TODO random tensor flatten 
         for name in mali_grad:
             theta_ = rotate_towards(mali_grad[name], benign_grad[name], theta)
-            random_tensor = torch.rand(mali_grad[name])
+            random_tensor = torch.rand(mali_grad[name].size()).to(device)
+            # random tensor to control non-IIDness
             gamma_ = rotate_towards(theta_, random_tensor, gamma)
-            beta_ = gamma_ / torch.abs(gamma_) * torch.abs(beta)
+            beta_ = gamma_ / torch.norm(gamma_) * torch.norm(benign_grad[name]) * beta
             const_grad[name] = beta_
-        constr_grads.append(const_grad)
+        const_grads.append(const_grad)
     return const_grads
 
 def rotate_towards(a, b, gamma):
     """
     Rotates tensor 'a' towards tensor 'b' by angle gamma (in degrees).
     """
+    shape = a.size()
+    a = torch.flatten(a)
+    b = torch.flatten(b)
+
     cos_theta = torch.dot(a, b) / (torch.norm(a) * torch.norm(b))
     theta = torch.acos(torch.clamp(cos_theta, -1.0, 1.0))
     gamma_rad = torch.deg2rad(torch.tensor(gamma))
@@ -1115,4 +1122,4 @@ def rotate_towards(a, b, gamma):
     direction = direction / torch.norm(direction)  # Normalize direction
     rotated_a = a + torch.norm(a) * torch.tan(gamma_rad) * direction
     
-    return rotated_a
+    return rotated_a.view(shape)

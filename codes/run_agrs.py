@@ -180,15 +180,14 @@ def run_experiment(xp, xp_count, n_experiments):
           # malicious clients save the benign_updates
           client.benign_update = client.W.copy()
       if hp["attack_method"] == "UAM":
-        #TODO Add for UAM's adactive attack
         # save results in a UAM_hist class
         # 1. Get feedback from previous attack
         if hp["UAM_mode"] == "TLP":
-          print("server.parameter_dict", type(server.parameter_dict))
-          print("np.unique(model_names)", np.unique(model_names))
+          # print("server.parameter_dict", type(server.parameter_dict))
+          # print("np.unique(model_names)", np.unique(model_names))
           att_result_last_round = uam_malicc.evaluate_tr_lf_attack(server.models)
           uam_malicc.att_result_hist.append(att_result_last_round["accuracy"])
-          x0 = [0, mal_user_grad_mean2, 1]
+
         
         benign_cos_dict = {}
         for client in mali_clients:
@@ -196,6 +195,9 @@ def run_experiment(xp, xp_count, n_experiments):
           benign_cos_dict[client.id] = cos_score
         print("benign_cos_dict", benign_cos_dict)
         
+        x0 = [0, math.degrees(np.mean(list(benign_cos_dict.values()))), 1]
+        print("x0", x0)
+
         # 2. UAM conduct maliocus training on the pooled dataset
         uam_malicc.synchronize_with_server(server)
         mali_stats = uam_malicc.compute_weight_mali_update(hp["local_epochs"])
@@ -263,6 +265,11 @@ def run_experiment(xp, xp_count, n_experiments):
           att_result = server.evaluate_attack().items()
         elif hp["attack_method"] in ["targeted_label_flip"]:
           att_result = server.evaluate_tr_lf_attack().items()
+        elif hp["attack_method"] == "UAM":
+          if hp["UAM_mode"] == "TLP":
+            att_result = server.evaluate_tr_lf_attack().items()
+          else:
+            raise Exception("Unknown UAM_mode")
         xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
         print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})        
 

@@ -282,6 +282,7 @@ class MaliCC(Device):
        train_stats=None
     return train_stats
 
+  #TODO add to the run_agrs.py
   def setup_search_algo(self, x0, initial_value, bounds, mode="MADS"): 
     if mode == "MADS":
        self.search_algo = MADS(x0, initial_value, bounds, delta0=0.5)

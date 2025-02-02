@@ -749,14 +749,11 @@ class Client_UAM(Device):
 
 
 
-	#TODO construct malicious model weight based command from search_algo
+	#construct malicious model weight based command from search_algo
   def compute_weight_update(self, epochs=1, loader=None):
-    # import pdb; pdb.set_trace()
-    user_grad = OrderedDict()
 
     for name in self.W:
-      user_grad[name] = self.init_model[name] - self.W[name].detach()
-      self.W[name].data = self.server_state[name] + self.scale*user_grad[name]
+      self.W[name].data = self.server_state[name] + self.W[name].data
 
   def predict_logit(self, x):
     """Softmax prediction on input"""
