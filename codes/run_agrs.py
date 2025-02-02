@@ -145,7 +145,6 @@ def run_experiment(xp, xp_count, n_experiments):
 
 
   server.number_client_all = len(client_loaders)
-  
   models.print_model(clients[0].model)
   
   # Start Distributed Training Process
@@ -189,6 +188,7 @@ def run_experiment(xp, xp_count, n_experiments):
           print("np.unique(model_names)", np.unique(model_names))
           att_result_last_round = uam_malicc.evaluate_tr_lf_attack(server.models)
           uam_malicc.att_result_hist.append(att_result_last_round["accuracy"])
+          x0 = [0, mal_user_grad_mean2, 1]
         
         benign_cos_dict = {}
         for client in mali_clients:
@@ -202,9 +202,17 @@ def run_experiment(xp, xp_count, n_experiments):
         mali_grad = get_updates(uam_malicc, server)
 
         # 3. Using the searching algorithm to get the parameter for this round
-        # uam_att_parms = uam_malicc.search_algo()
+        if c_round == 1:
+          uam_att_params = x0
+        else:
+          uam_att_params = uam_malicc.search_algo(att_result_last_round)
         # 4. Passing the attack parameters to every client in the communcation round into client.loader
-        pass
+        # process each weight from mali_grad to clients
+        clients_mali_grads = construct_mali_grads(uam_att_params, mali_grad, benign_grad=mal_user_grad_std2, mali_ids=mali_ids)
+
+        for client in participating_clients:
+          if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
+            client.W = clients_mali_grads.pop()
 
     
     # benign and malicous clients compute weight update

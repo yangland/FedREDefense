@@ -5,6 +5,7 @@ from client import Device
 import hdbscan
 from utils import kd_loss, DiffAugment
 import sklearn.metrics.pairwise as smp
+from MADS import MADS
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def cos_sim_nd(tensor1, tensor2):
@@ -253,6 +254,7 @@ class MaliCC(Device):
     self.mali_ids = mali_ids
     self.att_result_hist = []
     self.att_param_hist = []
+    self.search_algo = None
 
   # def evaluate_ensemble(self):
   #   return eval_op_ensemble(self.models, self.loader)
@@ -280,5 +282,7 @@ class MaliCC(Device):
        train_stats=None
     return train_stats
 
-  def search_algo(self, domain, mode="Powell"): 
+  def setup_search_algo(self, x0, initial_value, bounds, mode="MADS"): 
+    if mode == "MADS":
+       self.search_algo = MADS(x0, initial_value, bounds, delta0=0.5)
     pass 
