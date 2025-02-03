@@ -19,7 +19,6 @@ class StepwiseMADS:
         
         directions = np.eye(len(self.x))
         candidates = [self.x + self.mesh_size * d for d in directions] + [self.x - self.mesh_size * d for d in directions]
-        
         candidates = [np.clip(c, self.bounds[:, 0], self.bounds[:, 1]) for c in candidates]
         self.pending_eval = candidates.copy()
         return candidates

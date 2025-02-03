@@ -135,10 +135,12 @@ def run_experiment(xp, xp_count, n_experiments):
             pooled_mali_ds = ConcatDataset([client_data_subsets[i] for i in mali_ids])
             pooled_mali_dl = torch.utils.data.DataLoader(pooled_mali_ds, batch_size=hp["batch_size"], shuffle=True, num_workers=4)
             uamcc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes, dataset = hp['dataset'],
-                                UAM_mode = hp["UAM_mode"])    
+                                search_algo=hp["search_algo"], UAM_mode = hp["UAM_mode"])    
             # The first attack action to try
-            x0 = [0, 0, 1]
-            uamcc.search_initial(x0)      
+            x0 = [0.5, 0.5, 1]
+            
+            uamcc.search_initial(x0)  
+
           else:
             import pdb; pdb.set_trace()  
 
@@ -183,8 +185,9 @@ def run_experiment(xp, xp_count, n_experiments):
     if hp["attack_method"] == "UAM":
       # 1. Get feedback from previous attack
       if hp["UAM_mode"] == "TLP":
-        att_result_last_round = uamcc.evaluate_tr_lf_attack(server.models)
-        uamcc.history.append([uamcc.x, att_result_last_round["accuracy"]])
+        att_result_last_round = uamcc.evaluate_tr_lf_attack(server.models)["accuracy"]
+        print("att_result_last_round", att_result_last_round)
+        uamcc.history.append([uamcc.x, att_result_last_round])
 
       benign_cos_dict = {}
       for client in mali_clients:
@@ -199,7 +202,7 @@ def run_experiment(xp, xp_count, n_experiments):
       print("mali_cos_to_benign", compute_cos_simility(mali_grad, mal_user_grad_mean2))
       
       # 3. Using the searching algorithm to get the parameter for this round
-      uam_att_params = uamcc.search_algo(1-att_result_last_round)
+      uam_att_params = uamcc.dsm.step(1-att_result_last_round)
 
       # 4. Passing the attack parameters to every client
       clients_mali_grads = construct_mali_grads(uam_att_params, mali_grad, benign_grad=mal_user_grad_std2, mali_ids=mali_ids)

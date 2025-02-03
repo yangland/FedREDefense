@@ -26,7 +26,8 @@ hyperparameters04='[{
     "right_ben" : [0],
     "noise" : [0.001],
     "turn" : [0],
-    "UAM_mode": ["TLP"]
+    "UAM_mode": ["TLP"],
+    "search_algo": ["MADS"]
     }]'
 
 

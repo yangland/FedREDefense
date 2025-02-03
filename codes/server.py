@@ -236,7 +236,7 @@ class Server(Device):
 
 # add a special Server class malicious command center
 class MaliCC(Device):
-  def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset = 'cifar10', val_loader=None, mali_ids=None, UAM_mode=None):
+  def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset = 'cifar10', val_loader=None, mali_ids=None, search_algo="MADS", UAM_mode=None):
     super().__init__(loader)
     print(f"Malicous command center {dataset}")
     # self.parameter_dict = {model_name : {key : value for key, value in model.named_parameters()} for model_name, model in self.model_dict.items()}
@@ -252,13 +252,15 @@ class MaliCC(Device):
     self.mali_ids = mali_ids
     self.x = None
     self.history = []
-    self.search_algo = None
+    self.search_algo = search_algo
+    self.dsm = None
 
   
-  def search_initial(self, x0, bounds=[(0,1), (0, 180), (0, 3)], detlta0=1.0, delta_min=1e-3):
+  def search_initial(self, x0, bounds=[[0,1], [0, 180], [0, 3]], detlta0=0.1, delta_min=1e-5):
     self.x = x0
-    if self.UAM_mode == "MADS":
-      self.search_algo = MADS(x0, bounds, detlta0, delta_min)
+    if self.search_algo == "MADS":
+      self.dsm = MADS(x0, initial_value=1, bounds=np.array(bounds), delta0=detlta0, delta_min=delta_min)
+      print("search_initial search_algo")
 
   # def evaluate_ensemble(self):
   #   return eval_op_ensemble(self.models, self.loader)
