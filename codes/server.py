@@ -239,9 +239,7 @@ class MaliCC(Device):
   def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset = 'cifar10', val_loader=None, mali_ids=None, UAM_mode=None):
     super().__init__(loader)
     print(f"Malicous command center {dataset}")
-    # self.model_dict = {model_name : partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset = dataset)().to(device) }
     # self.parameter_dict = {model_name : {key : value for key, value in model.named_parameters()} for model_name, model in self.model_dict.items()}
-    # self.models = list(self.model_dict.values())
     self.model_name = model_name
     self.model_fn = partial(model_utils.get_model(self.model_name)[0], num_classes=num_classes , dataset = dataset)
     self.model = self.model_fn().to(device)
@@ -252,9 +250,15 @@ class MaliCC(Device):
     self.num_classes = num_classes
     
     self.mali_ids = mali_ids
-    self.att_result_hist = []
-    self.att_param_hist = []
+    self.x = None
+    self.history = []
     self.search_algo = None
+
+  
+  def search_initial(self, x0, bounds=[(0,1), (0, 180), (0, 3)], detlta0=1.0, delta_min=1e-3):
+    self.x = x0
+    if self.UAM_mode == "MADS":
+      self.search_algo = MADS(x0, bounds, detlta0, delta_min)
 
   # def evaluate_ensemble(self):
   #   return eval_op_ensemble(self.models, self.loader)
@@ -265,11 +269,11 @@ class MaliCC(Device):
   # def evaluate_attack(self, loader=None):
   #   return eval_op_ensemble_attack(self.models, self.loader if not loader else loader)
 
-  def evaluate_tr_lf_attack(self, server_models, loader=None):
-    return eval_op_ensemble_tr_lf_attack(server_models, self.loader if not loader else loader)
-
   # def evaluate_attack_with_preds(self, loader=None):
   #   return eval_op_ensemble_attack_with_preds(self.models, self.loader if not loader else loader)
+
+  def evaluate_tr_lf_attack(self, server_models, loader=None):
+    return eval_op_ensemble_tr_lf_attack(server_models, self.loader if not loader else loader)
 
   def synchronize_with_server(self, server):
     self.server_state = server.model_dict[self.model_name].state_dict()
@@ -279,11 +283,5 @@ class MaliCC(Device):
     if self.UAM_mode == "TLP":
       train_stats = train_op_tr_flip(self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
     else:
-       train_stats=None
+      train_stats=None
     return train_stats
-
-  #TODO add to the run_agrs.py
-  def setup_search_algo(self, x0, initial_value, bounds, mode="MADS"): 
-    if mode == "MADS":
-       self.search_algo = MADS(x0, initial_value, bounds, delta0=0.5)
-    pass 

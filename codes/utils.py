@@ -16,7 +16,7 @@ from scipy.ndimage.interpolation import rotate as scipyrotate
 import hdbscan
 from copy import deepcopy
 import sklearn.metrics.pairwise as smp
-
+import math
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -1123,3 +1123,9 @@ def rotate_towards(a, b, gamma):
     rotated_a = a + torch.norm(a) * torch.tan(gamma_rad) * direction
     
     return rotated_a.view(shape)
+
+def compute_cos_simility(a, b):
+  cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+  cos_simility_flat = math.degrees(cos(flat_dict_grad(a),
+                                          flat_dict_grad(b)).item())
+  return cos_simility_flat

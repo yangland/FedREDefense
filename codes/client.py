@@ -10,7 +10,7 @@ from utils import *
 import models as model_utils
 from sklearn.linear_model import LogisticRegression
 import os
-
+import math
 from math import sqrt
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -734,24 +734,25 @@ class Client_UAM(Device):
     train_stats = train_op(self.model, self.loader if not loader else loader, self.optimizer, epochs)
     return train_stats
   
-  def compute_cos_simility_to_mean(self):
-    # Calculate the cos similiaty between the mean of benign_updates of malicous client and each malicoius client
+  def compute_cos_simility_to_mean(self, per_layer=False):
+    # Calculate the cos similiaty (in degrees) between the mean of benign_updates of malicous client and
+    # each malicoius client
     cos = nn.CosineSimilarity(dim=0, eps=1e-9)
-    cos_simility_per_layer = dict()
-
-    for name in self.W:
-      cos_simility_per_layer[name] = cos(torch.flatten(self.mal_user_grad_mean2[name].detach()), 
-                                      torch.flatten(self.benign_update[name])).item()
-    cos_simility_flat = cos(flat_dict_grad(self.mal_user_grad_mean2), flat_dict_grad(self.benign_update)).item()
+    cos_simility_per_layer = None
+    cos_simility_flat = math.degrees(cos(flat_dict_grad(self.mal_user_grad_mean2),
+                                          flat_dict_grad(self.benign_update)).item())
+    
+    if per_layer:
+      cos_simility_per_layer = dict()
+      for name in self.W:
+        cos_simility_per_layer[name] = math.degrees(cos(torch.flatten(self.mal_user_grad_mean2[name].detach()), 
+                                        torch.flatten(self.benign_update[name])).item())
     # print("cos_simility_per_layer", cos_simility_per_layer) 
     # print("cos_simility_flat", cos_simility_flat)
     return cos_simility_flat, cos_simility_per_layer
 
-
-
 	#construct malicious model weight based command from search_algo
   def compute_weight_update(self, epochs=1, loader=None):
-
     for name in self.W:
       self.W[name].data = self.server_state[name] + self.W[name].data
 
