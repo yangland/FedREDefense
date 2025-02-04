@@ -710,11 +710,46 @@ class Client_DBA(Device):
     return y_
   
   
+class Client_AOP(Device):
+  def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10', obj = "TLP"):
+    super().__init__(loader)
+    self.id = idnum
+    self.model_name = model_name
+    self.model_fn = partial(model_utils.get_model(self.model_name)[0], num_classes=num_classes , dataset = dataset)
+    self.model = self.model_fn().to(device)
+    self.num_classes = num_classes
+    self.W = {key : value for key, value in self.model.named_parameters()}
+    self.init_model = None
+    self.optimizer_fn = optimizer_fn
+    self.optimizer = self.optimizer_fn(self.model.parameters())
+    self.benign_update = None
+    self.mali_update = None
+    self.obj = obj
+
+  def synchronize_with_server(self, server):
+    self.server_state = server.model_dict[self.model_name].state_dict()
+    self.model.load_state_dict(self.server_state, strict=False)
+  
+  def compute_weight_benign_update(self, epochs=1, loader=None):
+    train_stats = train_op(self.model, self.loader if not loader else loader, self.optimizer, epochs)
+    return train_stats
+  
+  def compute_weight_mali_update(self, epochs=1, loader=None):
+    if self.obj == "label_flip":
+      train_stats = train_op_tr_flip(self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
+    elif self.obj == "targeted_label_flip":
+      train_stats = train_op_flip(self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
+    elif self.obj == "Backdoor":
+      train_stats = train_op_backdoor(self.model, self.loader if not loader else loader, self.optimizer, epochs)
+    else:
+      raise Exception("Unknown mali objetive")
+    return train_stats    
+  
+  
 class Client_UAM(Device):
   def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10'):
     super().__init__(loader)
     self.id = idnum
-    # print(f"dataset client {dataset}")
     self.model_name = model_name
     self.model_fn = partial(model_utils.get_model(self.model_name)[0], num_classes=num_classes , dataset = dataset)
     self.model = self.model_fn().to(device)
@@ -725,6 +760,7 @@ class Client_UAM(Device):
     self.optimizer = self.optimizer_fn(self.model.parameters())
     self.scale = 3
     self.benign_update = None
+    self.mali_update = None
     
   def synchronize_with_server(self, server):
     self.server_state = server.model_dict[self.model_name].state_dict()

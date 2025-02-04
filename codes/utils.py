@@ -1083,10 +1083,11 @@ def get_update(update, model):
         update2[key] = update[key] - model[key]
     return update2
 
-def construct_mali_grads(uam_att_params, mali_grad, benign_grad, mali_ids):
+def UAM_construct_mali_grads(uam_att_params, mali_grad, benign_grad, mali_ids):
     # rotation based on the uam_att_params
     # generate the malicious grads
     theta, gamma, beta = uam_att_params
+    print("theta", theta)
 
     const_grads = []
     for id in mali_ids:
@@ -1094,38 +1095,139 @@ def construct_mali_grads(uam_att_params, mali_grad, benign_grad, mali_ids):
         
         #TODO random tensor flatten 
         for name in mali_grad:
-            theta_ = rotate_towards(mali_grad[name], benign_grad[name], theta)
-            random_tensor = torch.rand(mali_grad[name].size()).to(device)
+            x = rotate_towards(mali_grad[name], benign_grad[name], theta)
+            print("name", name)
+            print("mali_grad[name]", mali_grad[name])
+            print("theta_", x)
+            
             # random tensor to control non-IIDness
-            gamma_ = rotate_towards(theta_, random_tensor, gamma)
-            beta_ = gamma_ / torch.norm(gamma_) * torch.norm(benign_grad[name]) * beta
-            const_grad[name] = beta_
+            # random_tensor = torch.rand(mali_grad[name].size()).to(device)
+            
+            # x = rotate_towards(theta_, random_tensor, gamma)
+            # x = gamma_ / torch.norm(gamma_) * torch.norm(benign_grad[name]) * beta
+            print("if NaN", torch.isnan(x))
+            const_grad[name] = x
         const_grads.append(const_grad)
     return const_grads
 
-def rotate_towards(a, b, gamma):
+def rotate_towards(a: torch.Tensor, b: torch.Tensor, gamma: float) -> torch.Tensor:
     """
-    Rotates tensor 'a' towards tensor 'b' by angle gamma (in degrees).
+    Rotates tensor 'a' towards tensor 'b' by an angle 'gamma' (in degrees) in N-dimensional space.
+
+    Parameters:
+        a (torch.Tensor): The input tensor to be rotated.
+        b (torch.Tensor): The target tensor to rotate towards.
+        gamma (float): The rotation angle in degrees.
+
+    Returns:
+        torch.Tensor: The rotated tensor.
     """
     shape = a.size()
     a = torch.flatten(a)
     b = torch.flatten(b)
+    
+    # Normalize vectors
+    a = a / a.norm(dim=-1, keepdim=True)
+    b = b / b.norm(dim=-1, keepdim=True)
+    
+    # Compute the rotation axis (perpendicular component of b relative to a)
+    v = b - (a * (a * b).sum(dim=-1, keepdim=True))  # Remove parallel component
+    v_norm = v.norm(dim=-1, keepdim=True)
+    
+    # If v_norm is zero, a and b are already aligned, return a
+    if torch.all(v_norm < 1e-8):
+        return a
 
-    cos_theta = torch.dot(a, b) / (torch.norm(a) * torch.norm(b))
-    theta = torch.acos(torch.clamp(cos_theta, -1.0, 1.0))
-    gamma_rad = torch.deg2rad(torch.tensor(gamma))
+    v = v / v_norm  # Normalize rotation axis
     
-    if theta < gamma_rad:
-        return b  # If gamma exceeds the angle between, return b
+    # Compute cosine and sine of the rotation angle
+    gamma_rad = torch.deg2rad(torch.tensor(gamma, dtype=a.dtype, device=a.device))
+    cos_gamma = torch.cos(gamma_rad)
+    sin_gamma = torch.sin(gamma_rad)
     
-    direction = b - a
-    direction = direction / torch.norm(direction)  # Normalize direction
-    rotated_a = a + torch.norm(a) * torch.tan(gamma_rad) * direction
-    
-    return rotated_a.view(shape)
+    # Rodrigues' rotation formula
+    rotated_a = cos_gamma * a + sin_gamma * v + (1 - cos_gamma) * (v * (v * a).sum(dim=-1, keepdim=True))
+
+    return (rotated_a * a.norm(dim=-1, keepdim=True)).view(shape)  # Rescale to original magnitude
 
 def compute_cos_simility(a, b):
   cos = nn.CosineSimilarity(dim=0, eps=1e-9)
   cos_simility_flat = math.degrees(cos(flat_dict_grad(a),
                                           flat_dict_grad(b)).item())
   return cos_simility_flat
+
+def get_mali_clients_this_round(participating_clients, client_loaders, attack_rate):
+    mali_clients = []
+    for client in participating_clients:
+        if client.id >= (1 - attack_rate)* len(client_loaders):
+            mali_clients.append(client)
+    return mali_clients
+
+#TODO change to both mali-mali update, mali-benign update
+def mali_client_get_benign_updates(mali_clients, server, hp):
+    # malicious clients train on benign datasets
+    for client in mali_clients:
+        client.synchronize_with_server(server)
+        benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
+
+    mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_benign_updates(mali_clients, server)
+    
+    for client in mali_clients:
+        client.mal_user_grad_mean2 = mal_user_grad_mean2
+        client.mal_user_grad_std2 = mal_user_grad_std2
+        client.all_updates = all_updates
+        # malicious clients save the benign_updates
+        client.benign_update = client.W.copy()
+    return mal_user_grad_mean2, mal_user_grad_std2
+
+
+def mali_client_get_benign_updates_old(participating_clients, client_loaders, server, hp):
+    mali_clients = []
+    flag = False
+    for client in participating_clients:
+        if client.id >= (1 - hp["attack_rate"])* len(client_loaders):
+          client.synchronize_with_server(server)
+          benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
+          mali_clients.append(client)
+          flag = True
+    if flag == True:
+        mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_benign_updates(mali_clients, server)
+    for client in participating_clients:
+        if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
+          client.mal_user_grad_mean2 = mal_user_grad_mean2
+          client.mal_user_grad_std2 = mal_user_grad_std2
+          client.all_updates = all_updates
+          # malicious clients save the benign_updates
+          client.benign_update = client.W.copy()
+    return mali_clients, mal_user_grad_mean2, mal_user_grad_std2
+
+def UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mean2, 
+              mal_user_grad_std2, mali_ids, client_loaders, mali_clients):
+    # 1. Get feedback from previous attack
+    if hp["UAM_mode"] == "TLP":
+        att_result_last_round = uamcc.evaluate_tr_lf_attack(server.models)["accuracy"]
+        print("att_result_last_round", att_result_last_round)
+        uamcc.history.append([uamcc.x, att_result_last_round])
+
+    benign_cos_dict = {}
+    for client in mali_clients:
+        cos_score, _ = client.compute_cos_simility_to_mean()
+        benign_cos_dict[client.id] = cos_score
+    print("benign_cos_to_mean", benign_cos_dict)
+
+    # 2. UAM conduct maliocus training on the pooled dataset
+    uamcc.synchronize_with_server(server)
+    mali_stats = uamcc.compute_weight_mali_update(hp["local_epochs"])
+    mali_grad = get_updates(uamcc, server)
+    print("mali_cos_to_benign", compute_cos_simility(mali_grad, mal_user_grad_mean2))
+      
+    # 3. Using the searching algorithm to get the parameter for this round
+    uam_att_params = uamcc.dsm.step(1-att_result_last_round)
+
+    # 4. Passing the attack parameters to every client
+    clients_mali_grads = UAM_construct_mali_grads(uam_att_params, mali_grad, benign_grad=mal_user_grad_std2, mali_ids=mali_ids)
+
+    for client in participating_clients:
+        if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
+            client.W = clients_mali_grads.pop()
+

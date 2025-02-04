@@ -138,9 +138,9 @@ def run_experiment(xp, xp_count, n_experiments):
                                 search_algo=hp["search_algo"], UAM_mode = hp["UAM_mode"])    
             # The first attack action to try
             x0 = [0.5, 0.5, 1]
-            
             uamcc.search_initial(x0)  
-
+          elif hp["attack_method"] == "AOP":
+            pass
           else:
             import pdb; pdb.set_trace()  
 
@@ -164,52 +164,15 @@ def run_experiment(xp, xp_count, n_experiments):
     participating_clients = server.select_clients(clients, hp["participation_rate"])
     xp.log({"participating_clients" : np.array([c.id for c in participating_clients])})
     # For attack methods that require benign update from clients to construct the malicious upates
-    if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM"]:
-      mali_clients = []
-      flag = False
-      for client in participating_clients:
-        if client.id >= (1 - hp["attack_rate"])* len(client_loaders):
-          client.synchronize_with_server(server)
-          benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
-          mali_clients.append(client)
-          flag = True
-      if flag == True:
-        mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_benign_updates(mali_clients, server)
-      for client in participating_clients:
-        if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
-          client.mal_user_grad_mean2 = mal_user_grad_mean2
-          client.mal_user_grad_std2 = mal_user_grad_std2
-          client.all_updates = all_updates
-          # malicious clients save the benign_updates
-          client.benign_update = client.W.copy()
-    if hp["attack_method"] == "UAM":
-      # 1. Get feedback from previous attack
-      if hp["UAM_mode"] == "TLP":
-        att_result_last_round = uamcc.evaluate_tr_lf_attack(server.models)["accuracy"]
-        print("att_result_last_round", att_result_last_round)
-        uamcc.history.append([uamcc.x, att_result_last_round])
-
-      benign_cos_dict = {}
-      for client in mali_clients:
-        cos_score, _ = client.compute_cos_simility_to_mean()
-        benign_cos_dict[client.id] = cos_score
-      print("benign_cos_to_mean", benign_cos_dict)
-
-      # 2. UAM conduct maliocus training on the pooled dataset
-      uamcc.synchronize_with_server(server)
-      mali_stats = uamcc.compute_weight_mali_update(hp["local_epochs"])
-      mali_grad = get_updates(uamcc, server)
-      print("mali_cos_to_benign", compute_cos_simility(mali_grad, mal_user_grad_mean2))
-      
-      # 3. Using the searching algorithm to get the parameter for this round
-      uam_att_params = uamcc.dsm.step(1-att_result_last_round)
-
-      # 4. Passing the attack parameters to every client
-      clients_mali_grads = construct_mali_grads(uam_att_params, mali_grad, benign_grad=mal_user_grad_std2, mali_ids=mali_ids)
-
-      for client in participating_clients:
-        if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
-          client.W = clients_mali_grads.pop()
+    if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP"]:
+      mali_clients = get_mali_clients_this_round(participating_clients, client_loaders, hp["attack_rate"])
+      mal_user_grad_mean2, mal_user_grad_std2 = \
+        mali_client_get_benign_updates(mali_clients, client_loaders, server, hp)
+      if hp["attack_method"] == "UAM":
+        UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mean2, 
+                mal_user_grad_std2, mali_ids, client_loaders, mali_clients)
+      elif hp["attack_method"] == "AOP":
+        pass
 
     # Both benign and malicous clients compute weight update
     for client in participating_clients:
