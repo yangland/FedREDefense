@@ -711,7 +711,7 @@ class Client_DBA(Device):
   
   
 class Client_AOP(Device):
-  def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10', obj = "TLP"):
+  def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10', obj = "targeted_label_flip"):
     super().__init__(loader)
     self.id = idnum
     self.model_name = model_name
@@ -725,6 +725,10 @@ class Client_AOP(Device):
     self.benign_update = None
     self.mali_update = None
     self.obj = obj
+    self.mal_user_grad_mean2 = None
+    self.mal_user_grad_std2 = None
+    self.gamma = 0.1
+    self.all_updates = None
 
   def synchronize_with_server(self, server):
     self.server_state = server.model_dict[self.model_name].state_dict()
@@ -736,15 +740,33 @@ class Client_AOP(Device):
   
   def compute_weight_mali_update(self, epochs=1, loader=None):
     if self.obj == "label_flip":
-      train_stats = train_op_tr_flip(self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
-    elif self.obj == "targeted_label_flip":
       train_stats = train_op_flip(self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
+    elif self.obj == "targeted_label_flip":
+      train_stats = train_op_tr_flip(self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
     elif self.obj == "Backdoor":
       train_stats = train_op_backdoor(self.model, self.loader if not loader else loader, self.optimizer, epochs)
     else:
       raise Exception("Unknown mali objetive")
     return train_stats    
   
+  def compute_weight_update(self, epochs=1, loader=None):
+    cos_sim, closest_tensor = self.get_cloest_benign()
+    train_stats = train_op_tr_flip_aop(self.model, 
+                                       self.loader if not loader else loader, 
+                                       self.optimizer, 
+                                       epochs, 
+                                       class_num=self.num_classes,
+                                       benign_mean = closest_tensor,
+                                       gamma=self.gamma,
+                                       server_state=self.server_state
+                                       )
+    return train_stats
+  
+  def get_cloest_benign(self):
+    cos_sim, closest_tensor = closest_tensor_cosine_similarity(flat_dict_grad(self.mali_update), 
+                                                               torch.tensor(self.all_updates).to(device))
+    return cos_sim, closest_tensor
+    
   
 class Client_UAM(Device):
   def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset = 'cifar10'):

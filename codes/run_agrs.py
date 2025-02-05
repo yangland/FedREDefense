@@ -69,8 +69,6 @@ def detection_metric_overall_flame(real_label, label_pred):
   return accurate, fp, fn, nobyz, nosample
 
 
-
-
 def run_experiment(xp, xp_count, n_experiments):
   t0 = time.time()
   print(xp)
@@ -127,6 +125,8 @@ def run_experiment(xp, xp_count, n_experiments):
             clients.append(Client_Scaling(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
           elif hp["attack_method"] == "DBA":
             clients.append(Client_DBA(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
+          elif hp["attack_method"] == "AOP":
+            clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset'], obj=hp['objective']) )
           elif hp["attack_method"] == "UAM":
             clients.append(Client_UAM(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset = hp['dataset']) )
             
@@ -139,8 +139,6 @@ def run_experiment(xp, xp_count, n_experiments):
             # The first attack action to try
             x0 = [0.5, 0.5, 1]
             uamcc.search_initial(x0)  
-          elif hp["attack_method"] == "AOP":
-            pass
           else:
             import pdb; pdb.set_trace()  
 
@@ -166,13 +164,15 @@ def run_experiment(xp, xp_count, n_experiments):
     # For attack methods that require benign update from clients to construct the malicious upates
     if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP"]:
       mali_clients = get_mali_clients_this_round(participating_clients, client_loaders, hp["attack_rate"])
-      mal_user_grad_mean2, mal_user_grad_std2 = \
-        mali_client_get_benign_updates(mali_clients, client_loaders, server, hp)
+      mal_user_grad_mal_mean, mal_user_grad_mal_std = \
+        mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False)
       if hp["attack_method"] == "UAM":
-        UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mean2, 
-                mal_user_grad_std2, mali_ids, client_loaders, mali_clients)
+        UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mal_mean, 
+                mal_user_grad_mal_std, mali_ids, client_loaders, mali_clients)
       elif hp["attack_method"] == "AOP":
-        pass
+        mal_user_grad_ben_mean, mal_user_grad_ben_std = \
+          mali_client_get_trial_updates(mali_clients, server, hp, mali_train=True)
+        print("AOP mali-mali done")
 
     # Both benign and malicous clients compute weight update
     for client in participating_clients:
@@ -208,22 +208,14 @@ def run_experiment(xp, xp_count, n_experiments):
       xp.log({"server_val_{}".format(key) : value for key, value in eval_result })
       print({"server_{}_a_{}".format(key, hp["alpha"]) : value for key, value in eval_result})
       
-      # if hp["attack_method"] in ["DBA", "Scaling", "Backdoor"]:
-      #   att_result = server.evaluate_attack().items()
-      #   xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
-      #   print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
-      # if hp["attack_method"] in ["targeted_label_flip"]:
-      #   att_result = server.evaluate_tr_lf_attack().items()
-      #   xp.log({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
-      #   print({"server_att_{}_a_{}".format(key, hp["alpha"]) : value for key, value in att_result})
       
-      if hp["attack_method"] in ["DBA", "Scaling", "Backdoor", "targeted_label_flip", "UAM"]:
+      if hp["attack_method"] in ["DBA", "Scaling", "Backdoor", "targeted_label_flip", "UAM", "AOP"]:
         if hp["attack_method"] in ["DBA", "Scaling", "Backdoor"]:
           att_result = server.evaluate_attack().items()
         elif hp["attack_method"] in ["targeted_label_flip"]:
           att_result = server.evaluate_tr_lf_attack().items()
-        elif hp["attack_method"] == "UAM":
-          if hp["UAM_mode"] == "TLP":
+        elif hp["attack_method"] in ["UAM", "AOP"]:
+          if hp["objective"] == "targeted_label_flip":
             att_result = server.evaluate_tr_lf_attack().items()
           else:
             raise Exception("Unknown UAM_mode")

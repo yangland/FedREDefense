@@ -197,7 +197,7 @@ def run_experiment(xp, xp_count, n_experiments):
           mali_clients.append(client)
           flag = True
       if flag == True:
-        mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_benign_updates(mali_clients, server)
+        mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
       for client in participating_clients:
         if client.id >= (1 - hp["attack_rate"])* len(client_loaders):
           client.mal_user_grad_mean2 = mal_user_grad_mean2

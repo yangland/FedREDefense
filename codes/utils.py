@@ -220,9 +220,8 @@ def get_updates(client, server):
     return user_grad
 
 
-def get_benign_updates(mali_clients, server):
+def get_trial_updates(mali_clients, server):
     # import pdb; pdb.set_trace()
-    
     mal_user_grad_sum = {}
     mal_user_grad_pow = {}
     all_updates = []
@@ -459,6 +458,38 @@ def train_op_tr_flip(model, loader, optimizer, epochs, class_num=10):
             optimizer.step()
 
     return {"loss": running_loss / samples}
+
+
+def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_mean=None, gamma=1.0, server_state=None):
+    model.train()
+    cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+    flat_ben = benign_mean
+    flat_server = flat_dict_grad(server_state)
+
+    running_loss, samples = 0.0, 0
+    for ep in range(epochs):
+        for x, y in loader:
+            # modify 0 to 2
+            y[y==0] =2 
+            x, y = x.to(device), y.to(device)
+
+            # get model attached weight
+            flat_model = torch.cat([p.view(-1) for p in model.parameters()])
+
+            optimizer.zero_grad()
+            cos_ben_mean_vs_mali = cos(flat_ben, (flat_model - flat_server))
+            print("aop_tr_flip cos", cos_ben_mean_vs_mali)
+            loss = nn.CrossEntropyLoss()(model(x), y) - gamma * cos_ben_mean_vs_mali
+            # loss = nn.CrossEntropyLoss()(model(x), y)
+            # print("loss", loss)
+            running_loss += loss.item() * y.shape[0]
+            samples += y.shape[0]
+
+            loss.backward()
+            optimizer.step()
+
+    return {"loss": running_loss / samples}
+
 
 def eval_epoch(model, loader):
     running_loss, samples = 0.0, 0
@@ -1163,43 +1194,29 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
             mali_clients.append(client)
     return mali_clients
 
-#TODO change to both mali-mali update, mali-benign update
-def mali_client_get_benign_updates(mali_clients, server, hp):
-    # malicious clients train on benign datasets
-    for client in mali_clients:
-        client.synchronize_with_server(server)
-        benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
 
-    mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_benign_updates(mali_clients, server)
-    
-    for client in mali_clients:
-        client.mal_user_grad_mean2 = mal_user_grad_mean2
-        client.mal_user_grad_std2 = mal_user_grad_std2
-        client.all_updates = all_updates
-        # malicious clients save the benign_updates
-        client.benign_update = client.W.copy()
+def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
+    if not mali_train:
+        # malicious clients train on benign datasets
+        for client in mali_clients:
+            client.synchronize_with_server(server)
+            benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
+        mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
+
+        for client in mali_clients:
+            client.mal_user_grad_mean2 = mal_user_grad_mean2
+            client.mal_user_grad_std2 = mal_user_grad_std2
+            client.benign_update = client.W.copy()
+            client.all_updates = all_updates  
+    else:
+        # malicious clients train on malicious datasets
+        for client in mali_clients:
+            client.synchronize_with_server(server)
+            mali_stats = client.compute_weight_mali_update(hp["local_epochs"])
+            client.mali_update = client.W.copy()
+        mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
     return mal_user_grad_mean2, mal_user_grad_std2
 
-
-def mali_client_get_benign_updates_old(participating_clients, client_loaders, server, hp):
-    mali_clients = []
-    flag = False
-    for client in participating_clients:
-        if client.id >= (1 - hp["attack_rate"])* len(client_loaders):
-          client.synchronize_with_server(server)
-          benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
-          mali_clients.append(client)
-          flag = True
-    if flag == True:
-        mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_benign_updates(mali_clients, server)
-    for client in participating_clients:
-        if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
-          client.mal_user_grad_mean2 = mal_user_grad_mean2
-          client.mal_user_grad_std2 = mal_user_grad_std2
-          client.all_updates = all_updates
-          # malicious clients save the benign_updates
-          client.benign_update = client.W.copy()
-    return mali_clients, mal_user_grad_mean2, mal_user_grad_std2
 
 def UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mean2, 
               mal_user_grad_std2, mali_ids, client_loaders, mali_clients):
@@ -1231,3 +1248,30 @@ def UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mean2,
         if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
             client.W = clients_mali_grads.pop()
 
+def closest_tensor_cosine_similarity(v, tensor_set):
+    """
+    Find the tensor in tensor_set that has the highest cosine similarity with v
+    and return both the highest similarity and the closest tensor.
+    
+    Args:
+        v (torch.Tensor): The target tensor.
+        tensor_set (torch.Tensor): A 2D tensor where each row is a candidate tensor.
+    
+    Returns:
+        float: The maximum cosine similarity value.
+        torch.Tensor: The closest tensor.
+    """
+    # Normalize vectors
+    v_norm = F.normalize(v, dim=0)  # Shape: (d,)
+    tensor_set_norm = F.normalize(tensor_set, dim=1)  # Shape: (m, d)
+
+    # Compute cosine similarities
+    cos_sim = torch.matmul(tensor_set_norm, v_norm)  # Shape: (m,)
+
+    # Get the index of the maximum similarity
+    max_index = torch.argmax(cos_sim).item()
+    
+    # Retrieve the closest tensor
+    closest_tensor = tensor_set[max_index]
+    
+    return cos_sim[max_index].item(), closest_tensor
