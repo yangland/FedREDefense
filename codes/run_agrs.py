@@ -17,6 +17,7 @@ rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
 logger = logging.getLogger("logger")
+import datetime
 
 channel_dict = {
     "cifar10": 3,
@@ -188,7 +189,7 @@ def run_experiment(xp, xp_count, n_experiments):
 
     # In each FL communication round
     for c_round in range(1, hp["communication_rounds"]+1):
-        logger.info(f"---iter{c_round}----")
+        logger.info(f"---iter{c_round}/{hp['communication_rounds']}----")
         participating_clients = server.select_clients(
             clients, hp["participation_rate"])
         xp.log({"participating_clients": np.array(
@@ -272,7 +273,7 @@ def run_experiment(xp, xp_count, n_experiments):
                     (hp['communication_rounds']-c_round))
             print("Remaining Time (approx.):", '{:02d}:{:02d}:{:02d}'.format(e // 3600, (e % 3600 // 60), e % 60),
                   "[{:.2f}%]\n".format(c_round/hp['communication_rounds']*100))
-
+            logger.info(f"exp total running time: {datetime.timedelta(seconds=(time.time() - t0))}")
     # Save model to disk
     server.save_model(path=args.CHECKPOINT_PATH, name=hp["save_model"])
 

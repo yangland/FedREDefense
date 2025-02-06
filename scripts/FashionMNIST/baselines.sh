@@ -12,7 +12,7 @@ hyperparameters04='[{
     "participation_rate" : [1],
 
     "alpha" : [0.1],
-    "communication_rounds" : [3],
+    "communication_rounds" : [2],
     "local_epochs" : [1],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
