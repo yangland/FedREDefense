@@ -772,6 +772,7 @@ class Client_AOP(Device):
         self.mal_user_grad_std2 = None
         self.gamma = 0.1
         self.all_updates = None
+        self.min_idx_map = None
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -797,7 +798,7 @@ class Client_AOP(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        cos_sim, closest_tensor = self.get_cloest_benign()
+        closest_tensor = torch.tensor(self.all_updates[self.min_idx_map[self.id]])
         train_stats = train_op_tr_flip_aop(self.model,
                                            self.loader if not loader else loader,
                                            self.optimizer,

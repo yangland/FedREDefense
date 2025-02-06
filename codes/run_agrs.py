@@ -157,10 +157,10 @@ def run_experiment(xp, xp_count, n_experiments):
                                    idnum=i, num_classes=num_classes, dataset=hp['dataset']))
 
                     # initialize the UAM malicious group's command center
-                    mali_ids = list(range(
+                    mali_ids_all = list(range(
                         math.ceil((1 - hp["attack_rate"])*len(client_loaders)), len(client_loaders)))
                     pooled_mali_ds = ConcatDataset(
-                        [client_data_subsets[i] for i in mali_ids])
+                        [client_data_subsets[i] for i in mali_ids_all])
                     pooled_mali_dl = torch.utils.data.DataLoader(
                         pooled_mali_ds, batch_size=hp["batch_size"], shuffle=True, num_workers=4)
                     uamcc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes, dataset=hp['dataset'],
@@ -196,19 +196,30 @@ def run_experiment(xp, xp_count, n_experiments):
             [c.id for c in participating_clients])})
         # For attack methods that require benign update from clients to construct the malicious upates
         if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP"]:
-            mali_clients = get_mali_clients_this_round(
+            mali_clients, mali_ids = get_mali_clients_this_round(
                 participating_clients, client_loaders, hp["attack_rate"])
-            mal_user_grad_mal_mean, mal_user_grad_mal_std = \
+            mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_all = \
                 mali_client_get_trial_updates(
                     mali_clients, server, hp, mali_train=False)
             if hp["attack_method"] == "UAM":
                 UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mal_mean,
-                          mal_user_grad_mal_std, mali_ids, client_loaders, mali_clients)
+                          mal_user_grad_mal_std, mali_ids_all, client_loaders, mali_clients)
             elif hp["attack_method"] == "AOP":
-                mal_user_grad_ben_mean, mal_user_grad_ben_std = \
+                mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_all = \
                     mali_client_get_trial_updates(
                         mali_clients, server, hp, mali_train=True)
-                print("AOP mali-mali done")
+                
+                # Analysis the cos between mali adn benign
+                cos_matrix, min_idx, mean_cos = cosine_similarity_mal_ben(mal_all, ben_all, 
+                                                                 mal_user_grad_mal_mean, 
+                                                                 mal_user_grad_ben_mean)
+                
+                for client in mali_clients:
+                    client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
+                
+                logger.info(f"Cos_matrix {cos_matrix}")
+                logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}, mean {mean_cos}")
+
 
         # Both benign and malicous clients compute weight update
         for client in participating_clients:

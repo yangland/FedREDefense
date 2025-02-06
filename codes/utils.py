@@ -464,7 +464,7 @@ def train_op_tr_flip(model, loader, optimizer, epochs, class_num=10):
 def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_mean=None, gamma=1.0, server_state=None):
     model.train()
     cos = nn.CosineSimilarity(dim=0, eps=1e-9)
-    flat_ben = benign_mean
+    flat_ben = benign_mean.to(device)
     flat_server = flat_dict_grad(server_state)
 
     running_loss, samples = 0.0, 0
@@ -478,9 +478,9 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
             flat_model = torch.cat([p.view(-1) for p in model.parameters()])
 
             optimizer.zero_grad()
-            cos_ben_mean_vs_mali = cos(flat_ben, (flat_model - flat_server))
-            print("aop_tr_flip cos", cos_ben_mean_vs_mali)
-            loss = nn.CrossEntropyLoss()(model(x), y) - gamma * cos_ben_mean_vs_mali
+            cos_mean_vs_mali = cos(flat_ben, (flat_model - flat_server))
+            print("aop_tr_flip cos", cos_mean_vs_mali)
+            loss = nn.CrossEntropyLoss()(model(x), y) - gamma * cos_mean_vs_mali
             # loss = nn.CrossEntropyLoss()(model(x), y)
             # print("loss", loss)
             running_loss += loss.item() * y.shape[0]
@@ -1190,10 +1190,12 @@ def compute_cos_simility(a, b):
 
 def get_mali_clients_this_round(participating_clients, client_loaders, attack_rate):
     mali_clients = []
+    mali_ids = []
     for client in participating_clients:
-        if client.id >= (1 - attack_rate)* len(client_loaders):
+        if client.id >= (1 - attack_rate) * len(client_loaders):
             mali_clients.append(client)
-    return mali_clients
+            mali_ids.append(client.id)
+    return mali_clients, mali_ids
 
 
 def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
@@ -1216,7 +1218,7 @@ def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
             mali_stats = client.compute_weight_mali_update(hp["local_epochs"])
             client.mali_update = client.W.copy()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
-    return mal_user_grad_mean2, mal_user_grad_std2
+    return mal_user_grad_mean2, mal_user_grad_std2, all_updates
 
 
 def UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mean2, 
@@ -1276,3 +1278,34 @@ def closest_tensor_cosine_similarity(v, tensor_set):
     closest_tensor = tensor_set[max_index]
     
     return cos_sim[max_index].item(), closest_tensor
+
+
+def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """
+    Computes pairwise cosine similarity between two sets of vectors.
+    
+    Args:
+        A (torch.Tensor): Tensor of shape (m, d) representing m vectors.
+        B (torch.Tensor): Tensor of shape (n, d) representing n vectors.
+    
+    Returns:
+        torch.Tensor: Similarity matrix of shape (m, n), where entry (i, j) is the cosine similarity
+                      between A[i] and B[j].
+    """
+    A = A / A.norm(dim=1, keepdim=True)  # Normalize A
+    B = B / B.norm(dim=1, keepdim=True)  # Normalize B
+    
+    return A @ B.T  # Compute cosine similarity
+
+
+def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
+    mal_mean = flat_dict_grad(mal_mean)
+    ben_mean = flat_dict_grad(ben_mean)
+    print("mal_mean.size", mal_mean.size())
+    print("ben_mean.size", ben_mean.size())
+    mal_mean = mal_mean / mal_mean.norm(dim=0, keepdim=True)  
+    ben_mean = ben_mean / ben_mean.norm(dim=0, keepdim=True) 
+    mean_cos = mal_mean @ ben_mean.T
+    cos_matrix = pairwise_cosine_similarity(torch.tensor(mal_all), torch.tensor(ben_all))
+    min_idx = cos_matrix.argmin(dim=1)
+    return cos_matrix, min_idx, mean_cos
