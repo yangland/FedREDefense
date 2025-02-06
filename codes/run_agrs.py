@@ -12,13 +12,11 @@ import resource
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from scipy.spatial.distance import cdist, pdist
+import logging
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
-
-# def reduce_average(target, sources):
-#   for name in target:
-#       target[name].data = torch.mean(torch.stack([source[name].detach() for source in sources]), dim=0).clone()
+logger = logging.getLogger("logger")
 
 channel_dict = {
     "cifar10": 3,
@@ -75,15 +73,22 @@ def detection_metric_overall_flame(real_label, label_pred):
 
 def run_experiment(xp, xp_count, n_experiments):
     t0 = time.time()
-    print(xp)
+    
+    logger.addHandler(logging.FileHandler(filename=f'{args.RESULTS_PATH}/log_{xp.hyperparameters["log_id"]}.txt'))
+    logger.addHandler(logging.StreamHandler())
+    logger.setLevel(logging.DEBUG)
+    logger.info(f"Running experiment {xp_count+1} of total {n_experiments} \n")
     hp = xp.hyperparameters
+    logger.info("Exp parameters:")
+    for key, value in hp.items():
+        logger.info(f"{key}:{value}")
     num_classes = {"fmnist": 10, "cifar10": 10, "cinic10": 10}[hp["dataset"]]
 
     args.channel = channel_dict[hp['dataset']]
     args.imsize = imsize_dict[hp['dataset']]
     args.dataset = hp['dataset']
 
-    print(f"num classes {num_classes}, dsa mode {hp.get('dsa', True)}")
+    logger.info(f"num classes {num_classes}, dsa mode {hp.get('dsa', True)}")
     model_names = [model_name for model_name, k in hp["models"].items()
                    for _ in range(k)]
     optimizer, optimizer_hp = getattr(
@@ -91,7 +96,7 @@ def run_experiment(xp, xp_count, n_experiments):
 
     def optimizer_fn(x): return optimizer(
         x, **{k: hp[k] if k in hp else v for k, v in optimizer_hp.items()})
-    print(f"dataset : {hp['dataset']}")
+    logger.info(f"dataset : {hp['dataset']}")
 
     train_data_all, test_data = data.get_data(hp["dataset"], args.DATA_PATH)
 
@@ -117,7 +122,7 @@ def run_experiment(xp, xp_count, n_experiments):
                 clients.append(Client(model_name, optimizer_fn, loader,
                                idnum=i, num_classes=num_classes, dataset=hp['dataset']))
             else:
-                print(i)
+                 # print(i)
                 if hp["attack_method"] == "label_flip":
                     clients.append(Client_flip(model_name, optimizer_fn, loader,
                                    idnum=i, num_classes=num_classes, dataset=hp['dataset']))
@@ -172,17 +177,18 @@ def run_experiment(xp, xp_count, n_experiments):
     models.print_model(clients[0].model)
 
     # Start Distributed Training Process
-    print("Start Distributed Training..\n")
+    logger.info("\nStart Distributed Training..\n")
     t1 = time.time()
     xp.log({"prep_time": t1-t0})
     xp.log({"server_val_{}".format(key): value for key,
            value in server.evaluate_ensemble().items()})
     test_accs = []
 
-    print(f"model key {list(server.model_dict.keys())[0]}")
+    logger.info(f"model key {list(server.model_dict.keys())[0]}")
 
     # In each FL communication round
     for c_round in range(1, hp["communication_rounds"]+1):
+        logger.info(f"---iter{c_round}----")
         participating_clients = server.select_clients(
             clients, hp["participation_rate"])
         xp.log({"participating_clients": np.array(
@@ -238,7 +244,7 @@ def run_experiment(xp, xp_count, n_experiments):
                    'param_groups'][0][key] for key in optimizer_hp})
             eval_result = server.evaluate_ensemble().items()
             xp.log({"server_val_{}".format(key): value for key, value in eval_result})
-            print({"server_{}_a_{}".format(
+            logger.info({"server_{}_a_{}".format(
                 key, hp["alpha"]): value for key, value in eval_result})
 
             if hp["attack_method"] in ["DBA", "Scaling", "Backdoor", "targeted_label_flip", "UAM", "AOP"]:
@@ -253,7 +259,7 @@ def run_experiment(xp, xp_count, n_experiments):
                         raise Exception("Unknown UAM_mode")
                 xp.log({"server_att_{}_a_{}".format(
                     key, hp["alpha"]): value for key, value in att_result})
-                print({"server_att_{}_a_{}".format(
+                logger.info({"server_att_{}_a_{}".format(
                     key, hp["alpha"]): value for key, value in att_result})
 
             xp.log({"epoch_time": (time.time()-t1)/c_round})
@@ -283,8 +289,8 @@ def run():
     experiments = [xpm.Experiment(hyperparameters=hp) for hp in hp_dicts]
 
     print("Running {} Experiments..\n".format(len(experiments)))
-    for xp_count, experiment in enumerate(experiments):
-        run_experiment(experiment, xp_count, len(experiments))
+    for xp_count, xp in enumerate(experiments):
+        run_experiment(xp, xp_count, len(experiments))
 
 
 if __name__ == "__main__":

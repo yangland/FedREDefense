@@ -17,8 +17,9 @@ import hdbscan
 from copy import deepcopy
 import sklearn.metrics.pairwise as smp
 import math
+import logging
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+logger = logging.getLogger("logger")
 
 class ParamDiffAug():
     def __init__(self):
@@ -928,7 +929,7 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
     num_malicious_clients = int(malicious * num_clients)
     num_benign_clients = num_clients - num_malicious_clients
     clusterer = hdbscan.HDBSCAN(min_cluster_size=num_clients//2 + 1,min_samples=1,allow_single_cluster=True).fit(cos_list)
-    print(clusterer.labels_)
+    logger.info(f"flame clusterer.labels_ {str(clusterer.labels_)}")
     benign_client = []
     norm_list = np.array([])
 
@@ -949,7 +950,7 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
     for i in range(len(local_model_vector)):
         # norm_list = np.append(norm_list,torch.norm(update_params_vector[i],p=2))  # consider BN
         norm_list = np.append(norm_list,torch.norm(parameters_dict_to_vector(update_params[i]),p=2).item())  # no consider BN
-    print(benign_client)
+    logger.info(f"flame benign_client \n {str(benign_client)}")
    
     for i in range(len(benign_client)):
         if benign_client[i] < num_malicious_clients:
@@ -958,8 +959,8 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             #  minus per benign in cluster
             right_ben += 1
     turn+=1
-    print('flame proportion of malicious are selected:',wrong_mal/(num_malicious_clients*turn))
-    print('flame proportion of benign are selected:',right_ben/(num_benign_clients*turn))
+    logger.info(f'flame proportion of malicious are selected: {float(wrong_mal/(num_malicious_clients*turn))}')
+    logger.info(f'flame proportion of benign are selected: {float(right_ben/(num_benign_clients*turn))}')
     
     clip_value = np.median(norm_list)
     for i in range(len(benign_client)):
