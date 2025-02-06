@@ -958,8 +958,8 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             #  minus per benign in cluster
             right_ben += 1
     turn+=1
-    print('proportion of malicious are selected:',wrong_mal/(num_malicious_clients*turn))
-    print('proportion of benign are selected:',right_ben/(num_benign_clients*turn))
+    print('flame proportion of malicious are selected:',wrong_mal/(num_malicious_clients*turn))
+    print('flame proportion of benign are selected:',right_ben/(num_benign_clients*turn))
     
     clip_value = np.median(norm_list)
     for i in range(len(benign_client)):
