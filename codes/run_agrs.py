@@ -216,6 +216,7 @@ def run_experiment(xp, xp_count, n_experiments):
                 
                 for client in mali_clients:
                     client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
+                    client.mean_cos = mean_cos
                 
                 logger.info(f"Cos_matrix {cos_matrix}")
                 logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}, mean {mean_cos}")
@@ -267,9 +268,11 @@ def run_experiment(xp, xp_count, n_experiments):
                 elif hp["attack_method"] in ["UAM", "AOP"]:
                     if hp["objective"] == "targeted_label_flip":
                         att_result = server.evaluate_tr_lf_attack().items()
+                    elif hp["objective"] == "label_flip":
+                        att_result = {}
                     else:
                         raise Exception("Unknown UAM_mode")
-                xp.log({"server_att_{}_a_{}".format(
+                xp.log({"server_att_{}_a_{}".format(                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
                     key, hp["alpha"]): value for key, value in att_result})
                 logger.info({"server_att_{}_a_{}".format(
                     key, hp["alpha"]): value for key, value in att_result})

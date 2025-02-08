@@ -436,32 +436,34 @@ def train_op_flip(model, loader, optimizer, epochs, class_num=10):
 
 
 
-def train_op_tr_flip(model, loader, optimizer, epochs, class_num=10):
+def train_op_tr_flip(model, loader, optimizer, epochs, class_num=10, print_train_loss=False):
     model.train()
 
-    W0 = {k: v.detach().clone() for k, v in model.named_parameters()}
-
+    # W0 = {k: v.detach().clone() for k, v in model.named_parameters()}
+    losses = []
     running_loss, samples = 0.0, 0
     for ep in range(epochs):
-        for x, y in loader:
+        for it, (x, y) in enumerate(loader):
             # modify 0 to 2
             y[y==0] =2 
             x, y = x.to(device), y.to(device)
-
             optimizer.zero_grad()
-
             loss = nn.CrossEntropyLoss()(model(x), y)
-
+            if print_train_loss and it % 2 == 0:
+                losses.append(round(loss.item(), 2))
             running_loss += loss.item() * y.shape[0]
             samples += y.shape[0]
-
             loss.backward()
             optimizer.step()
+
+    if print_train_loss:
+        print(losses)
 
     return {"loss": running_loss / samples}
 
 
-def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_mean=None, gamma=1.0, server_state=None):
+def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_mean=None,
+                         gamma=1.0, mean_cos_d=60, server_state=None):
     model.train()
     cos = nn.CosineSimilarity(dim=0, eps=1e-9)
     flat_ben = benign_mean.to(device)
@@ -478,11 +480,18 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
             flat_model = torch.cat([p.view(-1) for p in model.parameters()])
 
             optimizer.zero_grad()
-            cos_mean_vs_mali = cos(flat_ben, (flat_model - flat_server))
-            print("aop_tr_flip cos", cos_mean_vs_mali)
-            loss = nn.CrossEntropyLoss()(model(x), y) - gamma * cos_mean_vs_mali
-            # loss = nn.CrossEntropyLoss()(model(x), y)
-            # print("loss", loss)
+            cos_ben_vs_mali = cos(flat_ben, (flat_model - flat_server))
+            print(f"ep{ep} aop_cos_mean_vs_mali: {cos_ben_vs_mali.item()}")
+            cos_ben_vs_mali_d = torch.rad2deg(torch.acos(cos_ben_vs_mali))
+
+            # Modified loss function with limitaion on cos distance between 
+            #01 loss = nn.CrossEntropyLoss()(model(x), y) + (math.e**max((cos_mean_vs_mali - gamma*mean_cos),0) - 1)
+            #02 loss = nn.CrossEntropyLoss()(model(x), y) + (math.e**max(torch.deg2rad((cos_mean_vs_mali_d - gamma*mean_cos_d)),0) - 1)
+            loss0 = nn.CrossEntropyLoss()(model(x), y) 
+            loss1 = max(torch.deg2rad((cos_ben_vs_mali_d - gamma*mean_cos_d)), 0)
+            print(f"loss0: {loss0}, loss1: {loss1}")
+            loss = loss0 + 1e-7 * loss1
+            
             running_loss += loss.item() * y.shape[0]
             samples += y.shape[0]
 
@@ -516,7 +525,7 @@ def gaussian_noise(data_shape, s, sigma, device=None):
 def train_op(model, loader, optimizer, epochs, print_train_loss=False):
     model.train()
 
-    W0 = {k: v.detach().clone() for k, v in model.named_parameters()}
+    # W0 = {k: v.detach().clone() for k, v in model.named_parameters()}
     losses = []
     # import pdb; pdb.set_trace()
     running_loss, samples = 0.0, 0
@@ -950,17 +959,19 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
     for i in range(len(local_model_vector)):
         # norm_list = np.append(norm_list,torch.norm(update_params_vector[i],p=2))  # consider BN
         norm_list = np.append(norm_list,torch.norm(parameters_dict_to_vector(update_params[i]),p=2).item())  # no consider BN
-    logger.info(f"flame benign_client \n {str(benign_client)}")
+    logger.info(f"flame selected benign_client \n {str(benign_client)}")
    
     for i in range(len(benign_client)):
-        if benign_client[i] < num_malicious_clients:
+        # if benign_client[i] < num_malicious_clients:
+        if benign_client[i] > num_benign_clients:
             wrong_mal+=1
         else:
             #  minus per benign in cluster
             right_ben += 1
     turn+=1
-    logger.info(f'flame proportion of malicious are selected: {float(wrong_mal/(num_malicious_clients*turn))}')
-    logger.info(f'flame proportion of benign are selected: {float(right_ben/(num_benign_clients*turn))}')
+    logger.info(f"mali vs ben: {wrong_mal}, {right_ben}")
+    logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn))}')
+    logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn))}')
     
     clip_value = np.median(norm_list)
     for i in range(len(benign_client)):
@@ -1191,6 +1202,7 @@ def compute_cos_simility(a, b):
 def get_mali_clients_this_round(participating_clients, client_loaders, attack_rate):
     mali_clients = []
     mali_ids = []
+    # mali client's IDs are after benign clients
     for client in participating_clients:
         if client.id >= (1 - attack_rate) * len(client_loaders):
             mali_clients.append(client)

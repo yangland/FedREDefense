@@ -770,9 +770,10 @@ class Client_AOP(Device):
         self.obj = obj
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
-        self.gamma = 0.1
+        self.gamma = 1
         self.all_updates = None
         self.min_idx_map = None
+        self.mean_cos = None
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -806,6 +807,7 @@ class Client_AOP(Device):
                                            class_num=self.num_classes,
                                            benign_mean=closest_tensor,
                                            gamma=self.gamma,
+                                           mean_cos_d=torch.rad2deg(torch.acos(self.mean_cos)),
                                            server_state=self.server_state
                                            )
         return train_stats
