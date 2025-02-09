@@ -765,15 +765,15 @@ class Client_AOP(Device):
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.benign_update = None
-        self.mali_update = None
+        self.benign_update = dict()
+        self.mali_update = dict()
         self.obj = obj
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
         self.gamma = 1
         self.all_updates = None
         self.min_idx_map = None
-        self.mean_cos = None
+        self.ben_cos_mean = None
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -799,22 +799,14 @@ class Client_AOP(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        closest_benign = torch.tensor(self.all_updates[self.min_idx_map[self.id]])
-        # if self.obj == "targeted_label_flip":
-            # train_stats = train_op_tr_flip_aop(self.model,
-            #                                 self.loader if not loader else loader,
-            #                                 self.optimizer,
-            #                                 epochs,
-            #                                 class_num=self.num_classes,
-            #                                 benign_mean=closest_tensor,
-            #                                 gamma=self.gamma,
-            #                                 mean_cos_d=torch.rad2deg(torch.acos(self.mean_cos)),
-            #                                 server_state=self.server_state)
+        # closest_benign = torch.tensor(self.all_updates[self.min_idx_map[self.id]])
             
-        craft_mail, k = train_op_tr_flip_topk(closest_benign, self.mali_update, server_state=self.server_state,
-                                              budegt=self.mean_cos, measure="cos")
+        craft_mail, k = train_op_tr_flip_topk(self.benign_update, self.mali_update, server_state=self.server_state,
+                                              budegt=self.ben_cos_mean, measure="cos")
+        
         restored_crafted = restore_dict_grad(craft_mail, self.server_state)
         self.model.load_state_dict(restored_crafted)
+        logger.info(f"client ID: {self.id}, k tops: {k}")
         return k
 
 

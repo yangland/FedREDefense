@@ -506,20 +506,31 @@ def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, m
         dist = nn.CosineSimilarity(dim=0, eps=1e-9)
     elif measure == "L2":
         dist = torch.cdist
-    flat_ben = ben.to(device)
+    flat_ben = flat_dict_grad(ben).to(device)
     flat_mail = flat_dict_grad(mali).to(device)
     flat_server = flat_dict_grad(server_state).to(device)
-    
     grad_mail = flat_mail - flat_server
     grad_ben = flat_ben - flat_server
     
-    if dist(grad_ben, grad_mail)<= budegt:
-        return flat_mail, 1
-    else:
-        # search a crafted model that within the given budegt
-        abs_delta = torch.abs(flat_mail - flat_ben)
-        craft_mail, k = replace_topk_budget(flat_ben, abs_delta, flat_mail, budegt, measure)
+    # print("flat_ben", flat_ben)
+    # print("flat_mail", flat_mail)
+    # print("flat_server", flat_server)
     
+    # print("grad_mail", grad_mail)
+    # print("grad_ben", grad_ben)
+    
+    distance = dist(grad_ben, grad_mail)
+    print(f"{measure} distance, {distance}, budegt {budegt}")
+    
+    if measure == "cos":
+        if dist(grad_ben, grad_mail) > budegt:
+            return flat_mail, 1
+        else:
+            # search a crafted model that within the given budegt
+            abs_delta = torch.abs(flat_mail - flat_ben)
+            craft_mail, k = replace_topk_budget(flat_ben, abs_delta, flat_mail, budegt, measure)
+    else:
+        pass
     return craft_mail, k
 
 
@@ -1027,13 +1038,13 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             #  minus per benign in cluster
             right_ben += 1
     turn+=1
-    logger.info(f"mali vs ben: {wrong_mal}, {right_ben}")
+    logger.info(f"mali vs ben: {wrong_mal}, {right_ben}; mali% {(round(wrong_mal/(wrong_mal+right_ben), 2))}")
     logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn))}')
     logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn))}')
     
     clip_value = np.median(norm_list)
     for i in range(len(benign_client)):
-        gama = clip_value/norm_list[i]
+        gama = clip_value/(norm_list[i] + 1e-15)
         if gama < 1:
             for key in update_params[benign_client[i]]:
                 if key.split('.')[-1] == 'num_batches_tracked':
@@ -1051,7 +1062,8 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             temp = deepcopy(var)
             temp = temp.normal_(mean=0,std=noise*clip_value)
             var += temp
-
+    
+    return wrong_mal/(wrong_mal+right_ben)
 
 def reduce_foolsgold(target, sources):
     n_clients = len(sources)
@@ -1279,14 +1291,16 @@ def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
         for client in mali_clients:
             client.mal_user_grad_mean2 = mal_user_grad_mean2
             client.mal_user_grad_std2 = mal_user_grad_std2
-            client.benign_update = client.W.copy()
+            for name in client.W:
+                client.benign_update[name] = client.W[name].detach().clone() 
             client.all_updates = all_updates  
     else:
         # malicious clients train on malicious datasets
         for client in mali_clients:
             client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(hp["local_epochs"])
-            client.mali_update = client.W.copy()
+            for name in client.W:
+                client.mali_update[name] = client.W[name].detach().clone() 
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
     return mal_user_grad_mean2, mal_user_grad_std2, all_updates
 
@@ -1371,11 +1385,26 @@ def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor
 def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     mal_mean = flat_dict_grad(mal_mean)
     ben_mean = flat_dict_grad(ben_mean)
-    # print("mal_mean.size", mal_mean.size())
-    # print("ben_mean.size", ben_mean.size())
+
+    ben_cos_mean, ben_cos_std = mean_cosine_similarity(ben_all)
+
     mal_mean = mal_mean / mal_mean.norm(dim=0, keepdim=True)  
     ben_mean = ben_mean / ben_mean.norm(dim=0, keepdim=True) 
-    mean_cos = mal_mean @ ben_mean.T
+    mali_ben_mean_cos = torch.nn.functional.cosine_similarity(mal_mean, ben_mean, dim=0).item()
     cos_matrix = pairwise_cosine_similarity(torch.tensor(mal_all), torch.tensor(ben_all))
     min_idx = cos_matrix.argmin(dim=1)
-    return cos_matrix, min_idx, mean_cos
+    return cos_matrix, min_idx, ben_cos_mean, mali_ben_mean_cos
+
+
+def mean_cosine_similarity(A):
+    A = torch.tensor(A)
+    n = A.shape[0]
+    cos_sims = []
+    
+    for i in range(n):
+        for j in range(i + 1, n):
+            cos_sim = torch.nn.functional.cosine_similarity(A[i], A[j], dim=0)
+            cos_sims.append(cos_sim.item())
+    
+    cos_sims = torch.tensor(cos_sims)
+    return cos_sims.mean().item(), cos_sims.std().item()

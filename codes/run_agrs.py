@@ -216,19 +216,20 @@ def run_experiment(xp, xp_count, n_experiments):
                     mali_client_get_trial_updates(mali_clients, server, hp, mali_train=True)
                 
                 # Analysis the cos between mali adn benign
-                cos_matrix, min_idx, mean_cos = cosine_similarity_mal_ben(mal_all, ben_all, 
+                cos_matrix, min_idx, ben_cos_mean, mali_ben_mean_cos = cosine_similarity_mal_ben(mal_all, ben_all, 
                                                                  mal_user_grad_mal_mean, 
                                                                  mal_user_grad_ben_mean)
                 
                 for client in mali_clients:
                     client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
-                    client.mean_cos = mean_cos
+                    client.ben_cos_mean = ben_cos_mean
                 
-                xp.log({"mali_ben_cos_mat": cos_matrix.numpy()})
+                xp.log({"mali_ben_cos_mat": cos_matrix.detach().cpu().numpy()}, printout=False)
                 xp.log({"mali-ben_map": min_idx})
-                xp.log({"mean_cos": mean_cos})                
-                logger.info(f"Cos_matrix {cos_matrix}")
-                logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}, mean {mean_cos}")
+                xp.log({"ben_cos_mean": ben_cos_mean})
+                xp.log({"mean_cos_mali_ben": mali_ben_mean_cos})                
+
+                logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}, mean {mali_ben_mean_cos}")
 
 
         # Both benign and malicous clients compute weight update
@@ -252,8 +253,9 @@ def run_experiment(xp, xp_count, n_experiments):
         elif hp["aggregation_mode"] == "RLR":
             server.RLR(participating_clients, hp["robustLR_threshold"])
         elif hp["aggregation_mode"] == "flame":
-            server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"],
+            mali_select_p=server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"],
                          hp["right_ben"], hp["noise"], hp["turn"])
+            xp.log({"flame_mali_select_precentage": mali_select_p})
         elif hp["aggregation_mode"] == "foolsgold":
             server.foolsgold(participating_clients)
         else:
