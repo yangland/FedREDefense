@@ -255,7 +255,8 @@ class Server(Device):
 
 # add a special Server class malicious command center
 class MaliCC(Device):
-    def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset='cifar10', val_loader=None, mali_ids=None, search_algo="MADS", UAM_mode=None):
+    def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset='cifar10',
+                 val_loader=None, mali_ids=None, search_algo="MADS", objective=None):
         super().__init__(loader)
         print(f"Malicous command center {dataset}")
         # self.parameter_dict = {model_name : {key : value for key, value in model.named_parameters()} for model_name, model in self.model_dict.items()}
@@ -266,7 +267,7 @@ class MaliCC(Device):
         self.W = {key: value for key, value in self.model.named_parameters()}
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.UAM_mode = UAM_mode
+        self.objective = objective
         self.num_classes = num_classes
 
         self.mali_ids = mali_ids
@@ -282,29 +283,28 @@ class MaliCC(Device):
                 bounds), delta0=detlta0, delta_min=delta_min)
             print("search_initial search_algo")
 
-    # def evaluate_ensemble(self):
-    #   return eval_op_ensemble(self.models, self.loader)
+    def binary_search(self, previous, feedback):
+        pass
 
-    # def evaluate_ensemble_with_preds(self):
-    #   return eval_op_ensemble_with_preds(self.models, self.loader)
 
-    # def evaluate_attack(self, loader=None):
-    #   return eval_op_ensemble_attack(self.models, self.loader if not loader else loader)
-
-    # def evaluate_attack_with_preds(self, loader=None):
-    #   return eval_op_ensemble_attack_with_preds(self.models, self.loader if not loader else loader)
-
-    def evaluate_tr_lf_attack(self, server_models, loader=None):
-        return eval_op_ensemble_tr_lf_attack(server_models, self.loader if not loader else loader)
-
+    def get_server_feedback(self, server_models, loader=None):
+        feedback = None
+        if self.objective == "targeted_label_flip":
+            feedback = eval_op_ensemble_tr_lf_attack(server_models, self.loader if not loader else loader)
+        elif self.objective == "label_flip":
+            feedback = eval_op_ensemble(server_models, self.loader if not loader else loader)
+        elif self.objective == "Backdoor":
+            feedback = eval_op_ensemble_attack(server_models, self.loader if not loader else loader)
+        return feedback
+            
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
         self.model.load_state_dict(self.server_state, strict=False)
 
-    def compute_weight_mali_update(self, epochs=1, loader=None):
-        if self.UAM_mode == "TLP":
-            train_stats = train_op_tr_flip(
-                self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
-        else:
-            train_stats = None
-        return train_stats
+    # def compute_weight_mali_update(self, epochs=1, loader=None):
+    #     if self.objective == "TLP":
+    #         train_stats = train_op_tr_flip(
+    #             self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
+    #     else:
+    #         train_stats = None
+    #     return train_stats

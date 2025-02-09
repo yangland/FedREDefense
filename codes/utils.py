@@ -501,6 +501,64 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
     return {"loss": running_loss / samples}
 
 
+def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, measure="cos"):
+    if measure == "cos":
+        dist = nn.CosineSimilarity(dim=0, eps=1e-9)
+    elif measure == "L2":
+        dist = torch.cdist
+    flat_ben = ben.to(device)
+    flat_mail = flat_dict_grad(mali).to(device)
+    flat_server = flat_dict_grad(server_state).to(device)
+    
+    grad_mail = flat_mail - flat_server
+    grad_ben = flat_ben - flat_server
+    
+    if dist(grad_ben, grad_mail)<= budegt:
+        return flat_mail, 1
+    else:
+        # search a crafted model that within the given budegt
+        abs_delta = torch.abs(flat_mail - flat_ben)
+        craft_mail, k = replace_topk_budget(flat_ben, abs_delta, flat_mail, budegt, measure)
+    
+    return craft_mail, k
+
+
+def replace_topk_budget(a, b, c, budget, measure):
+    n = b.numel()
+    left, right = 0, 100  # Binary search range for k
+    best_k, best_craft = 0, a
+    
+    while left <= right:
+        k = (left + right) // 2
+        top_k = max(1, int(n * (k / 100)))
+        threshold = torch.topk(b, top_k, sorted=True).values[-1]
+        mask = b >= threshold
+        result = torch.where(mask, c, a)
+        
+        if measure == "cos":
+            # Compute cosine similarity
+            dist = torch.nn.functional.cosine_similarity(a.flatten(), result.flatten(), dim=0)
+        elif measure == "L2":
+            # Compute L2 similarity
+            dist = torch.cdist(a.flatten(), result.flatten(), p=2)
+        
+        if dist >= budget:
+            best_k, best_craft = k, result
+            right = k - 1  # Try for a smaller k
+        else:
+            left = k + 1  # Increase k to meet the budget
+    
+    return best_craft, best_k
+
+def restore_dict_grad(flat_grad, model_dict):
+    restored_grad = {}
+    start = 0
+    for name, param in model_dict.items():
+        num_elements = param.numel()
+        restored_grad[name] = flat_grad[start:start + num_elements].view(param.shape)
+        start += num_elements
+    return restored_grad
+
 def eval_epoch(model, loader):
     running_loss, samples = 0.0, 0
     with torch.no_grad():
@@ -1313,8 +1371,8 @@ def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor
 def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     mal_mean = flat_dict_grad(mal_mean)
     ben_mean = flat_dict_grad(ben_mean)
-    print("mal_mean.size", mal_mean.size())
-    print("ben_mean.size", ben_mean.size())
+    # print("mal_mean.size", mal_mean.size())
+    # print("ben_mean.size", ben_mean.size())
     mal_mean = mal_mean / mal_mean.norm(dim=0, keepdim=True)  
     ben_mean = ben_mean / ben_mean.norm(dim=0, keepdim=True) 
     mean_cos = mal_mean @ ben_mean.T

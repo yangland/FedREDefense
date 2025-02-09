@@ -155,7 +155,11 @@ def run_experiment(xp, xp_count, n_experiments):
                 elif hp["attack_method"] == "UAM":
                     clients.append(Client_UAM(model_name, optimizer_fn, loader,
                                    idnum=i, num_classes=num_classes, dataset=hp['dataset']))
-
+                else:
+                    import pdb
+                    pdb.set_trace()
+                
+                if hp["attack_method"] in ["AOP", "UAM"]:
                     # initialize the UAM malicious group's command center
                     mali_ids_all = list(range(
                         math.ceil((1 - hp["attack_rate"])*len(client_loaders)), len(client_loaders)))
@@ -163,14 +167,17 @@ def run_experiment(xp, xp_count, n_experiments):
                         [client_data_subsets[i] for i in mali_ids_all])
                     pooled_mali_dl = torch.utils.data.DataLoader(
                         pooled_mali_ds, batch_size=hp["batch_size"], shuffle=True, num_workers=4)
-                    uamcc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes, dataset=hp['dataset'],
-                                   search_algo=hp["search_algo"], UAM_mode=hp["UAM_mode"])
-                    # The first attack action to try
-                    x0 = [0.5, 0.5, 1]
-                    uamcc.search_initial(x0)
-                else:
-                    import pdb
-                    pdb.set_trace()
+                    
+                    malicc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes,
+                                    dataset=hp['dataset'], search_algo=hp["search_algo"], objective=hp["objective"])
+                    
+                    if hp["attack_method"] == "UAM":
+                        # The first attack action to try
+                        x0 = [0.5, 0.5, 1]
+                        malicc.search_initial(x0)
+                    elif hp["attack_method"] == "AOP":
+                        # get the first feedback
+                        pass
 
     print(clients[0].model)
 
@@ -202,12 +209,11 @@ def run_experiment(xp, xp_count, n_experiments):
                 mali_client_get_trial_updates(
                     mali_clients, server, hp, mali_train=False)
             if hp["attack_method"] == "UAM":
-                UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mal_mean,
+                UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_mal_mean,
                           mal_user_grad_mal_std, mali_ids_all, client_loaders, mali_clients)
             elif hp["attack_method"] == "AOP":
                 mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_all = \
-                    mali_client_get_trial_updates(
-                        mali_clients, server, hp, mali_train=True)
+                    mali_client_get_trial_updates(mali_clients, server, hp, mali_train=True)
                 
                 # Analysis the cos between mali adn benign
                 cos_matrix, min_idx, mean_cos = cosine_similarity_mal_ben(mal_all, ben_all, 
@@ -218,6 +224,9 @@ def run_experiment(xp, xp_count, n_experiments):
                     client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
                     client.mean_cos = mean_cos
                 
+                xp.log({"mali_ben_cos_mat": cos_matrix.numpy()})
+                xp.log({"mali-ben_map": min_idx})
+                xp.log({"mean_cos": mean_cos})                
                 logger.info(f"Cos_matrix {cos_matrix}")
                 logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}, mean {mean_cos}")
 

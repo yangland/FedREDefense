@@ -799,18 +799,24 @@ class Client_AOP(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        closest_tensor = torch.tensor(self.all_updates[self.min_idx_map[self.id]])
-        train_stats = train_op_tr_flip_aop(self.model,
-                                           self.loader if not loader else loader,
-                                           self.optimizer,
-                                           epochs,
-                                           class_num=self.num_classes,
-                                           benign_mean=closest_tensor,
-                                           gamma=self.gamma,
-                                           mean_cos_d=torch.rad2deg(torch.acos(self.mean_cos)),
-                                           server_state=self.server_state
-                                           )
-        return train_stats
+        closest_benign = torch.tensor(self.all_updates[self.min_idx_map[self.id]])
+        # if self.obj == "targeted_label_flip":
+            # train_stats = train_op_tr_flip_aop(self.model,
+            #                                 self.loader if not loader else loader,
+            #                                 self.optimizer,
+            #                                 epochs,
+            #                                 class_num=self.num_classes,
+            #                                 benign_mean=closest_tensor,
+            #                                 gamma=self.gamma,
+            #                                 mean_cos_d=torch.rad2deg(torch.acos(self.mean_cos)),
+            #                                 server_state=self.server_state)
+            
+        craft_mail, k = train_op_tr_flip_topk(closest_benign, self.mali_update, server_state=self.server_state,
+                                              budegt=self.mean_cos, measure="cos")
+        restored_crafted = restore_dict_grad(craft_mail, self.server_state)
+        self.model.load_state_dict(restored_crafted)
+        return k
+
 
     def get_cloest_benign(self):
         cos_sim, closest_tensor = closest_tensor_cosine_similarity(flat_dict_grad(self.mali_update),
