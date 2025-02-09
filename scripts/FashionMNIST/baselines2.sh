@@ -11,7 +11,7 @@ hyperparameters04='[{
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 
-    "alpha" : [0.1],
+    "alpha" : [1],
     "communication_rounds" : [300],
     "local_epochs" : [1],
     "batch_size" : [32],
@@ -26,7 +26,7 @@ hyperparameters04='[{
     "right_ben" : [0],
     "noise" : [0.001],
     "turn" : [0],
-    "objective": ["label_flip"],
+    "objective": ["targeted_label_flip"],
     "search_algo": ["MADS"]
     }]'
 

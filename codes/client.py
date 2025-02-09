@@ -805,7 +805,7 @@ class Client_AOP(Device):
         craft_mail, k = train_op_tr_flip_topk(self.benign_update, self.mali_update, server_state=self.server_state,
                                               budegt=self.ben_cos_mean, measure="cos")
         
-        restored_crafted = restore_dict_grad(craft_mail, self.server_state)
+        restored_crafted = restore_dict_grad(craft_mail, flat_dict_grad(self.server_state), self.server_state)
         self.model.load_state_dict(restored_crafted)
         logger.info(f"client ID: {self.id}, k tops: {k}")
         return k

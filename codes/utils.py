@@ -524,7 +524,7 @@ def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, m
     
     if measure == "cos":
         if dist(grad_ben, grad_mail) > budegt:
-            return flat_mail, 1
+            return flat_mail, 100
         else:
             # search a crafted model that within the given budegt
             abs_delta = torch.abs(flat_mail - flat_ben)
@@ -561,12 +561,13 @@ def replace_topk_budget(a, b, c, budget, measure):
     
     return best_craft, best_k
 
-def restore_dict_grad(flat_grad, model_dict):
+def restore_dict_grad(flat_grad, server_w, model_dict):
     restored_grad = {}
     start = 0
     for name, param in model_dict.items():
         num_elements = param.numel()
-        restored_grad[name] = flat_grad[start:start + num_elements].view(param.shape)
+        restored_grad[name] = flat_grad[start:start + num_elements].view(param.shape) + \
+                            server_w[start:start + num_elements].view(param.shape)
         start += num_elements
     return restored_grad
 
@@ -1038,7 +1039,7 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             #  minus per benign in cluster
             right_ben += 1
     turn+=1
-    logger.info(f"mali vs ben: {wrong_mal}, {right_ben}; mali% {(round(wrong_mal/(wrong_mal+right_ben), 2))}")
+    logger.info(f"mali vs ben: {wrong_mal}, {right_ben}; mali% {(round(wrong_mal/(wrong_mal+right_ben)*100, 4))}")
     logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn))}')
     logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn))}')
     
@@ -1281,6 +1282,7 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
 
 
 def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
+    server_weights = server.parameter_dict[mali_clients[0].model_name]
     if not mali_train:
         # malicious clients train on benign datasets
         for client in mali_clients:
@@ -1292,7 +1294,7 @@ def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
             client.mal_user_grad_mean2 = mal_user_grad_mean2
             client.mal_user_grad_std2 = mal_user_grad_std2
             for name in client.W:
-                client.benign_update[name] = client.W[name].detach().clone() 
+                client.benign_update[name] = client.W[name].detach() - server_weights[name].detach()
             client.all_updates = all_updates  
     else:
         # malicious clients train on malicious datasets
@@ -1300,7 +1302,7 @@ def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
             client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(hp["local_epochs"])
             for name in client.W:
-                client.mali_update[name] = client.W[name].detach().clone() 
+                client.mali_update[name] = client.W[name].detach() - server_weights[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
     return mal_user_grad_mean2, mal_user_grad_std2, all_updates
 
