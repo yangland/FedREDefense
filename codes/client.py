@@ -771,6 +771,7 @@ class Client_AOP(Device):
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
         self.gamma = 1
+        # gradients from all malicious clients
         self.all_updates = None
         self.min_idx_map = None
         self.ben_cos_mean = None

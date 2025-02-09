@@ -508,9 +508,9 @@ def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, m
         dist = torch.cdist
     flat_ben = flat_dict_grad(ben).to(device)
     flat_mail = flat_dict_grad(mali).to(device)
-    flat_server = flat_dict_grad(server_state).to(device)
-    grad_mail = flat_mail - flat_server
-    grad_ben = flat_ben - flat_server
+    # flat_server = flat_dict_grad(server_state).to(device)
+    grad_mail = flat_mail
+    grad_ben = flat_ben
     
     # print("flat_ben", flat_ben)
     # print("flat_mail", flat_mail)
