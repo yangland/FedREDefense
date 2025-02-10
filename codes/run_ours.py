@@ -231,8 +231,8 @@ def run_experiment(xp, xp_count, n_experiments):
                 if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
                     client.mal_user_grad_mean2 = mal_user_grad_mean2
                     client.mal_user_grad_std2 = mal_user_grad_std2
-                    client.all_updates = all_updates
-                    client.benigh_update = client.W.copy()
+                    client.all_grads = all_updates
+                    client.benign_grad = client.W.copy()
 
         for client in participating_clients:
             client.synchronize_with_server(server)

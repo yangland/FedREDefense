@@ -50,7 +50,7 @@ class Client(Device):
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.benign_update = None
+        self.benign_grad = None
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -183,8 +183,8 @@ class Client_MinMax(Device):
         self.scale = 1
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
-        self.all_updates = None
-        self.benign_update = None
+        self.all_grads = None
+        self.benign_grad = None
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -197,7 +197,7 @@ class Client_MinMax(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None, dev_type='std', threshold=30):
-        all_updates = torch.Tensor(np.array(self.all_updates)).cuda()
+        all_updates = torch.Tensor(np.array(self.all_grads)).cuda()
         model_re = torch.mean(all_updates, dim=0)
         if dev_type == 'unit_vec':
             # unit vector, dir opp to good dir
@@ -282,8 +282,8 @@ class Client_MinSum(Device):
         self.scale = 1
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
-        self.all_updates = None
-        self.benign_update = None
+        self.all_grads = None
+        self.benign_grad = None
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -297,7 +297,7 @@ class Client_MinSum(Device):
 
     def compute_weight_update(self, epochs=1, loader=None, dev_type='std', threshold=30):
         # import pdb; pdb.set_trace()
-        all_updates = torch.Tensor(np.array(self.all_updates)).cuda()
+        all_updates = torch.Tensor(np.array(self.all_grads)).cuda()
         model_re = torch.mean(all_updates, dim=0)
         if dev_type == 'unit_vec':
             # unit vector, dir opp to good dir
@@ -447,8 +447,8 @@ class Client_Krum(Device):
         self.scale = 1
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
-        self.all_updates = None
-        self.benign_update = None
+        self.all_grads = None
+        self.benign_grad = None
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(
@@ -461,7 +461,7 @@ class Client_Krum(Device):
         self.model.load_state_dict(server_state, strict=False)
 
     def compute_weight_update(self, epochs=1, loader=None):
-        all_updates = torch.Tensor(np.array(self.all_updates)).cuda()
+        all_updates = torch.Tensor(np.array(self.all_grads)).cuda()
         model_re = torch.mean(all_updates, dim=0)
         if len(all_updates) != 1:
             user_grad = OrderedDict()
@@ -529,8 +529,8 @@ class Client_Fang(Device):
         self.scale = 1
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
-        self.all_updates = None
-        self.benign_update = None
+        self.all_grads = None
+        self.benign_grad = None
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(
@@ -543,7 +543,7 @@ class Client_Fang(Device):
         self.model.load_state_dict(server_state, strict=False)
 
     def compute_weight_update(self, epochs=1, loader=None):
-        all_updates = torch.Tensor(np.array(self.all_updates)).cuda()
+        all_updates = torch.Tensor(np.array(self.all_grads)).cuda()
         model_re = torch.mean(all_updates, dim=0)
         if len(all_updates) != 1:
             model_std = torch.std(all_updates, 0)
@@ -765,14 +765,14 @@ class Client_AOP(Device):
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.benign_update = dict()
-        self.mali_update = dict()
+        self.benign_grad = dict()
+        self.mali_grad = dict()
         self.obj = obj
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
         self.gamma = 1
         # gradients from all malicious clients
-        self.all_updates = None
+        self.all_grads = None
         self.min_idx_map = None
         self.ben_cos_mean = None
 
@@ -800,9 +800,9 @@ class Client_AOP(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        # closest_benign = torch.tensor(self.all_updates[self.min_idx_map[self.id]])
+        # closest_benign = torch.tensor(self.all_grads[self.min_idx_map[self.id]])
             
-        craft_mail, k = train_op_tr_flip_topk(self.benign_update, self.mali_update, server_state=self.server_state,
+        craft_mail, k = train_op_tr_flip_topk(self.benign_grad, self.mali_grad, server_state=self.server_state,
                                               budegt=self.ben_cos_mean, measure="cos")
         
         restored_crafted = restore_dict_grad(craft_mail, flat_dict_grad(self.server_state), self.server_state)
@@ -812,8 +812,8 @@ class Client_AOP(Device):
 
 
     def get_cloest_benign(self):
-        cos_sim, closest_tensor = closest_tensor_cosine_similarity(flat_dict_grad(self.mali_update),
-                                                                   torch.tensor(self.all_updates).to(device))
+        cos_sim, closest_tensor = closest_tensor_cosine_similarity(flat_dict_grad(self.mali_grad),
+                                                                   torch.tensor(self.all_grads).to(device))
         return cos_sim, closest_tensor
 
 
@@ -831,8 +831,8 @@ class Client_UAM(Device):
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scale = 3
-        self.benign_update = None
-        self.mali_update = None
+        self.benign_grad = None
+        self.mali_grad = None
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -849,13 +849,13 @@ class Client_UAM(Device):
         cos = nn.CosineSimilarity(dim=0, eps=1e-9)
         cos_simility_per_layer = None
         cos_simility_flat = math.degrees(cos(flat_dict_grad(self.mal_user_grad_mean2),
-                                             flat_dict_grad(self.benign_update)).item())
+                                             flat_dict_grad(self.benign_grad)).item())
 
         if per_layer:
             cos_simility_per_layer = dict()
             for name in self.W:
                 cos_simility_per_layer[name] = math.degrees(cos(torch.flatten(self.mal_user_grad_mean2[name].detach()),
-                                                                torch.flatten(self.benign_update[name])).item())
+                                                                torch.flatten(self.benign_grad[name])).item())
         # print("cos_simility_per_layer", cos_simility_per_layer)
         # print("cos_simility_flat", cos_simility_flat)
         return cos_simility_flat, cos_simility_per_layer

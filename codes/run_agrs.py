@@ -205,20 +205,21 @@ def run_experiment(xp, xp_count, n_experiments):
         if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP"]:
             mali_clients, mali_ids = get_mali_clients_this_round(
                 participating_clients, client_loaders, hp["attack_rate"])
-            mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_all = \
+            mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
                 mali_client_get_trial_updates(
                     mali_clients, server, hp, mali_train=False)
             if hp["attack_method"] == "UAM":
                 UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_mal_mean,
                           mal_user_grad_mal_std, mali_ids_all, client_loaders, mali_clients)
             elif hp["attack_method"] == "AOP":
-                mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_all = \
+                mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_grad_all = \
                     mali_client_get_trial_updates(mali_clients, server, hp, mali_train=True)
                 
                 # Analysis the cos between mali adn benign
-                cos_matrix, min_idx, ben_cos_mean, mali_ben_mean_cos = cosine_similarity_mal_ben(mal_all, ben_all, 
-                                                                 mal_user_grad_mal_mean, 
-                                                                 mal_user_grad_ben_mean)
+                cos_matrix, min_idx, ben_cos_mean, mali_ben_mean_cos = cosine_similarity_mal_ben(mal_grad_all, 
+                                                                                                 ben_grad_all, 
+                                                                                        mal_user_grad_mal_mean, 
+                                                                                        mal_user_grad_ben_mean)
                 
                 for client in mali_clients:
                     client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))

@@ -502,37 +502,36 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
 
 
 def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, measure="cos"):
-    if measure == "cos":
-        dist = nn.CosineSimilarity(dim=0, eps=1e-9)
-    elif measure == "L2":
-        dist = torch.cdist
+    # Output crafted grad that replace topk in ben with mail within the attack budget
     flat_ben = flat_dict_grad(ben).to(device)
     flat_mail = flat_dict_grad(mali).to(device)
-    # flat_server = flat_dict_grad(server_state).to(device)
     grad_mail = flat_mail
     grad_ben = flat_ben
     
     # print("flat_ben", flat_ben)
     # print("flat_mail", flat_mail)
-    # print("flat_server", flat_server)
-    
     # print("grad_mail", grad_mail)
     # print("grad_ben", grad_ben)
     
-    distance = dist(grad_ben, grad_mail)
-    print(f"{measure} distance, {distance}, budegt {budegt}")
+    distance = grad_dist(grad_ben, grad_mail, measure)
+    print(f"{measure} distance: {distance}, budegt: {budegt}")
     
-    if measure == "cos":
-        if dist(grad_ben, grad_mail) > budegt:
-            return flat_mail, 100
-        else:
-            # search a crafted model that within the given budegt
-            abs_delta = torch.abs(flat_mail - flat_ben)
-            craft_mail, k = replace_topk_budget(flat_ben, abs_delta, flat_mail, budegt, measure)
+    if grad_dist(grad_ben, grad_mail, measure) < budegt:
+        return flat_mail, 100
     else:
-        pass
+        # search a crafted model that within the given budegt
+        abs_delta = torch.abs(flat_mail - flat_ben)
+        craft_mail, k = replace_topk_budget(flat_ben, abs_delta, flat_mail, budegt, measure)
+
     return craft_mail, k
 
+def grad_dist(a, b, measure):
+    # a, b as 1D tensor
+    if measure == "cos":
+        cos_d = nn.CosineSimilarity(dim=0, eps=1e-9)
+        return 1 - cos_d(a, b)
+    if measure == "L2":
+        return torch.cdist(a, b, p=2)
 
 def replace_topk_budget(a, b, c, budget, measure):
     n = b.numel()
@@ -540,18 +539,15 @@ def replace_topk_budget(a, b, c, budget, measure):
     best_k, best_craft = 0, a
     
     while left <= right:
+        print(f"left {left}, right{right}")
         k = (left + right) // 2
         top_k = max(1, int(n * (k / 100)))
         threshold = torch.topk(b, top_k, sorted=True).values[-1]
         mask = b >= threshold
         result = torch.where(mask, c, a)
         
-        if measure == "cos":
-            # Compute cosine similarity
-            dist = torch.nn.functional.cosine_similarity(a.flatten(), result.flatten(), dim=0)
-        elif measure == "L2":
-            # Compute L2 similarity
-            dist = torch.cdist(a.flatten(), result.flatten(), p=2)
+        dist = grad_dist(a.flatten(), result.flatten(), measure)
+
         
         if dist >= budget:
             best_k, best_craft = k, result
@@ -1294,15 +1290,15 @@ def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
             client.mal_user_grad_mean2 = mal_user_grad_mean2
             client.mal_user_grad_std2 = mal_user_grad_std2
             for name in client.W:
-                client.benign_update[name] = client.W[name].detach() - server_weights[name].detach()
-            client.all_updates = all_updates  
+                client.benign_grad[name] = client.W[name].detach() - server_weights[name].detach()
+            client.all_grads = all_updates  
     else:
         # malicious clients train on malicious datasets
         for client in mali_clients:
             client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(hp["local_epochs"])
             for name in client.W:
-                client.mali_update[name] = client.W[name].detach() - server_weights[name].detach()
+                client.mali_grad[name] = client.W[name].detach() - server_weights[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
     return mal_user_grad_mean2, mal_user_grad_std2, all_updates
 
