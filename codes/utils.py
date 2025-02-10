@@ -501,15 +501,11 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
     return {"loss": running_loss / samples}
 
 
-def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, measure="cos"):
+def train_op_tr_flip_topk(ben=None, mali=None, abs_delta=None, budegt=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
-    flat_ben = flat_dict_grad(ben).to(device)
-    flat_mail = flat_dict_grad(mali).to(device)
-    grad_mail = flat_mail
-    grad_ben = flat_ben
-    
-    # print("flat_ben", flat_ben)
-    # print("flat_mail", flat_mail)
+    grad_ben = flat_dict_grad(ben).to(device)
+    grad_mail = flat_dict_grad(mali).to(device)
+
     # print("grad_mail", grad_mail)
     # print("grad_ben", grad_ben)
     
@@ -520,11 +516,10 @@ def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, m
     print(f"{measure} distance: {distance}, budegt: {budegt}")
     
     if grad_dist(grad_ben, grad_mail, measure) < budegt:
-        return flat_mail, 100
+        return grad_mail, 100
     else:
         # search a crafted model that within the given budegt
-        abs_delta = torch.abs(flat_mail - flat_ben)
-        craft_mail, k = replace_topk_budget(flat_ben, abs_delta, flat_mail, budegt, measure)
+        craft_mail, k = replace_topk_budget_cos(grad_ben, abs_delta, grad_mail, budegt)
 
     return craft_mail, k
 
@@ -536,29 +531,64 @@ def grad_dist(a, b, measure):
     if measure == "L2":
         return torch.cdist(a, b, p=2)
 
-def replace_topk_budget(a, b, c, budget, measure):
-    n = b.numel()
-    left, right = 0, 100  # Binary search range for k
-    best_k, best_craft = 0, a
+# def replace_topk_budget(a, b, delta, budget, measure):
+#     n = delta.numel()
+#     left, right = 0, 100  # Binary search range for k
+#     best_k, best_craft = 0, a
     
-    while left <= right:
-        print(f"left {left}, right{right}")
-        k = (left + right) // 2
-        top_k = max(1, int(n * (k / 100)))
-        threshold = torch.topk(b, top_k, sorted=True).values[-1]
-        mask = b >= threshold
-        result = torch.where(mask, c, a)
+#     while left <= right:
+#         k = (left + right) // 2
+#         top_k = max(1, int(n * (k / 100)))
+#         threshold = torch.topk(delta, top_k, sorted=True).values[-1]
+#         mask = delta >= threshold
+#         result = torch.where(mask, b, a)
         
-        dist = grad_dist(a.flatten(), result.flatten(), measure)
+#         dist = grad_dist(a.flatten(), result.flatten(), measure)
+#         print(f"left {left}, right {right}, dist:{dist}")
+        
+#         if dist >= budget:
+#             best_k, best_craft = k, result
+#             right = k - 1  # Try for a smaller k
+#         else:
+#             left = k + 1  # Increase k to meet the budget
+    
+#     return best_craft, best_k
 
-        
-        if dist >= budget:
-            best_k, best_craft = k, result
-            right = k - 1  # Try for a smaller k
-        else:
-            left = k + 1  # Increase k to meet the budget
+def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, budget: float):
+    """
+    Replaces elements in `a` with corresponding elements from `b` based on the top-k values in `delta`,
+    ensuring that the cosine similarity between the modified `a` (denoted as `c`) and the original `a`
+    satisfies (1 - cos(a, c)) <= budget.
+
+    Args:
+        a (torch.Tensor): Original tensor.
+        b (torch.Tensor): Replacement tensor.
+        delta (torch.Tensor): Difference tensor (|b - a|) used for ranking replacements.
+        budget (float): Maximum allowable cosine distance between `a` and the modified tensor `c`.
+
+    Returns:
+        torch.Tensor: Modified tensor `c` with selected replacements.
+    """
+    flat_delta = delta.view(-1)
+    flat_a = a.view(-1)
+    flat_b = b.view(-1)
     
-    return best_craft, best_k
+    # Sort indices by delta in descending order (top-k replacement candidates)
+    sorted_indices = torch.argsort(flat_delta, descending=True)
+    
+    c = flat_a.clone()
+    
+    for idx in sorted_indices:
+        c[idx] = flat_b[idx]
+        cos_sim = torch.nn.functional.cosine_similarity(a.view(1, -1), c.view(1, -1)).item()
+        cos_dist = 1 - cos_sim
+        
+        if cos_dist > budget:
+            c[idx] = flat_a[idx]  # Revert change if budget exceeded
+            break  # Stop replacing when budget is reached
+    
+    return c.view(a.shape), idx/len(sorted_indices) * 100
+
 
 def restore_dict_grad(flat_grad, server_w, model_dict):
     restored_grad = {}

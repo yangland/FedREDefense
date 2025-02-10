@@ -775,6 +775,8 @@ class Client_AOP(Device):
         self.all_grads = None
         self.min_idx_map = None
         self.ben_cos_mean = None
+        self.pool_mali_grad = None
+        self.mali_mean = None
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -801,11 +803,16 @@ class Client_AOP(Device):
 
     def compute_weight_update(self, epochs=1, loader=None):
         # closest_benign = torch.tensor(self.all_grads[self.min_idx_map[self.id]])
-            
-        craft_mail, k = train_op_tr_flip_topk(self.benign_grad, self.mali_grad, server_state=self.server_state,
+        # mali grad selection
+        # 1. self.mali_grad - individual grad
+        # 2. self.pool_mali_grad
+        # 3. self.mal_user_grad_mean2 - benign mean
+        # delta between mali-benign mean and mali-mali mean
+        abs_delta = torch.abs(flat_dict_grad(self.mal_user_grad_mean2) - flat_dict_grad(self.mali_mean)).to(device)
+        craft_mali, k = train_op_tr_flip_topk(self.benign_grad, self.mali_grad, abs_delta,
                                               budegt=self.ben_cos_mean, measure="cos")
         
-        restored_crafted = restore_dict_grad(craft_mail, flat_dict_grad(self.server_state), self.server_state)
+        restored_crafted = restore_dict_grad(craft_mali, flat_dict_grad(self.server_state), self.server_state)
         self.model.load_state_dict(restored_crafted)
         logger.info(f"client ID: {self.id}, k tops: {k}")
         return k

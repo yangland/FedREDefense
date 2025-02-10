@@ -257,7 +257,7 @@ class Server(Device):
 # add a special Server class malicious command center
 class MaliCC(Device):
     def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset='cifar10',
-                 val_loader=None, mali_ids=None, search_algo="MADS", objective=None):
+                 val_loader=None, mali_ids=None, search_algo="MADS", obj=None):
         super().__init__(loader)
         print(f"Malicous command center {dataset}")
         # self.parameter_dict = {model_name : {key : value for key, value in model.named_parameters()} for model_name, model in self.model_dict.items()}
@@ -268,7 +268,7 @@ class MaliCC(Device):
         self.W = {key: value for key, value in self.model.named_parameters()}
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.objective = objective
+        self.obj = obj
         self.num_classes = num_classes
 
         self.mali_ids = mali_ids
@@ -302,10 +302,21 @@ class MaliCC(Device):
         self.server_state = server.model_dict[self.model_name].state_dict()
         self.model.load_state_dict(self.server_state, strict=False)
 
-    # def compute_weight_mali_update(self, epochs=1, loader=None):
-    #     if self.objective == "TLP":
-    #         train_stats = train_op_tr_flip(
-    #             self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
-    #     else:
-    #         train_stats = None
-    #     return train_stats
+    def compute_weight_benign_update(self, epochs=1, loader=None):
+        train_stats = train_op(
+            self.model, self.loader if not loader else loader, self.optimizer, epochs)
+        return train_stats
+
+    def compute_weight_mali_update(self, epochs=1, loader=None):
+        if self.obj == "label_flip":
+            train_stats = train_op_flip(
+                self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
+        elif self.obj == "targeted_label_flip":
+            train_stats = train_op_tr_flip(
+                self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
+        elif self.obj == "Backdoor":
+            train_stats = train_op_backdoor(
+                self.model, self.loader if not loader else loader, self.optimizer, epochs)
+        else:
+            raise Exception("Unknown mali objetive")
+        return train_stats

@@ -169,7 +169,7 @@ def run_experiment(xp, xp_count, n_experiments):
                         pooled_mali_ds, batch_size=hp["batch_size"], shuffle=True, num_workers=4)
                     
                     malicc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes,
-                                    dataset=hp['dataset'], search_algo=hp["search_algo"], objective=hp["objective"])
+                                    dataset=hp['dataset'], search_algo=hp["search_algo"], obj=hp["objective"])
                     
                     if hp["attack_method"] == "UAM":
                         # The first attack action to try
@@ -203,6 +203,7 @@ def run_experiment(xp, xp_count, n_experiments):
             [c.id for c in participating_clients])})
         # For attack methods that require benign update from clients to construct the malicious upates
         if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP"]:
+            # mali clients get benign grads
             mali_clients, mali_ids = get_mali_clients_this_round(
                 participating_clients, client_loaders, hp["attack_rate"])
             mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
@@ -212,8 +213,14 @@ def run_experiment(xp, xp_count, n_experiments):
                 UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_mal_mean,
                           mal_user_grad_mal_std, mali_ids_all, client_loaders, mali_clients)
             elif hp["attack_method"] == "AOP":
+                # mali clients get mali grads
                 mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_grad_all = \
                     mali_client_get_trial_updates(mali_clients, server, hp, mali_train=True)
+                
+                # get pool_mali_grad updates
+                # malicc.synchronize_with_server(server)
+                # malicc.compute_weight_mali_update(hp["local_epochs"])
+                
                 
                 # Analysis the cos between mali adn benign
                 cos_matrix, min_idx, ben_cos_mean, mali_ben_mean_cos = cosine_similarity_mal_ben(mal_grad_all, 
@@ -224,7 +231,10 @@ def run_experiment(xp, xp_count, n_experiments):
                 for client in mali_clients:
                     client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
                     client.ben_cos_mean = ben_cos_mean
-                
+                    client.mali_mean = mal_user_grad_mal_mean
+                    # pool_mali_w = malicc.W
+                    # client.pool_mali_grad = reduce_residual(pool_mali_w, server.models[0].state_dict())
+                    
                 xp.log({"mali_ben_cos_mat": cos_matrix.detach().cpu().numpy()}, printout=False)
                 xp.log({"mali-ben_map": min_idx})
                 xp.log({"ben_cos_mean": ben_cos_mean})
