@@ -811,7 +811,7 @@ class Client_AOP(Device):
         abs_delta = torch.abs(flat_dict_grad(self.mal_user_grad_mean2) - flat_dict_grad(self.mali_mean)).to(device)
         craft_mali, k = train_op_tr_flip_topk(self.benign_grad, self.mali_grad, abs_delta,
                                               budegt=self.ben_cos_mean, measure="cos")
-        
+        # lambda_ = 1.5
         restored_crafted = restore_dict_grad(craft_mali, flat_dict_grad(self.server_state), self.server_state)
         self.model.load_state_dict(restored_crafted)
         logger.info(f"client ID: {self.id}, k tops: {k}")

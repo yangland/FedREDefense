@@ -510,17 +510,18 @@ def train_op_tr_flip_topk(ben=None, mali=None, abs_delta=None, budegt=None, meas
     # print("grad_ben", grad_ben)
     
     distance = grad_dist(grad_ben, grad_mail, measure)
-    if measure == "cos":
-        budegt = 1 - budegt
     
     print(f"{measure} distance: {distance}, budegt: {budegt}")
     
-    if grad_dist(grad_ben, grad_mail, measure) < budegt:
+    if budegt==None or grad_dist(grad_ben, grad_mail, measure) < budegt :
         return grad_mail, 100
     else:
         # search a crafted model that within the given budegt
-        craft_mail, k = replace_topk_budget_cos(grad_ben, abs_delta, grad_mail, budegt)
-
+        if measure == "cos":
+            budegt = 1 - budegt
+            craft_mail, k = replace_topk_budget_cos(grad_ben, abs_delta, grad_mail, budegt)
+        elif measure == "L2":
+            craft_mail, k = replace_topk_budget_l2(grad_ben, abs_delta, grad_mail, budegt)
     return craft_mail, k
 
 def grad_dist(a, b, measure):
@@ -531,28 +532,6 @@ def grad_dist(a, b, measure):
     if measure == "L2":
         return torch.cdist(a, b, p=2)
 
-# def replace_topk_budget(a, b, delta, budget, measure):
-#     n = delta.numel()
-#     left, right = 0, 100  # Binary search range for k
-#     best_k, best_craft = 0, a
-    
-#     while left <= right:
-#         k = (left + right) // 2
-#         top_k = max(1, int(n * (k / 100)))
-#         threshold = torch.topk(delta, top_k, sorted=True).values[-1]
-#         mask = delta >= threshold
-#         result = torch.where(mask, b, a)
-        
-#         dist = grad_dist(a.flatten(), result.flatten(), measure)
-#         print(f"left {left}, right {right}, dist:{dist}")
-        
-#         if dist >= budget:
-#             best_k, best_craft = k, result
-#             right = k - 1  # Try for a smaller k
-#         else:
-#             left = k + 1  # Increase k to meet the budget
-    
-#     return best_craft, best_k
 
 def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, budget: float):
     """
@@ -577,17 +556,70 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
     sorted_indices = torch.argsort(flat_delta, descending=True)
     
     c = flat_a.clone()
+    best_c = c.clone()
+    best_cos_dist = 1 - torch.nn.functional.cosine_similarity(a.view(1, -1), best_c.view(1, -1)).item()
     
-    for i, idx in enumerate(sorted_indices):
-        c[idx] = flat_b[idx]
+    left, right = 0, len(sorted_indices)
+    
+    while left < right:
+        mid = (left + right) // 2
+        c[:] = flat_a  # Reset c to original a before each iteration
+        c[sorted_indices[:mid]] = flat_b[sorted_indices[:mid]]
         cos_sim = torch.nn.functional.cosine_similarity(a.view(1, -1), c.view(1, -1)).item()
         cos_dist = 1 - cos_sim
         
-        if cos_dist > budget:
-            c[idx] = flat_a[idx]  # Revert change if budget exceeded
-            break  # Stop replacing when budget is reached
+        if cos_dist <= budget:
+            best_c = c.clone()
+            best_cos_dist = cos_dist
+            left = mid + 1
+        else:
+            right = mid - 1
     
-    return c.view(a.shape), i/len(sorted_indices) * 100
+    return best_c.view(a.shape), mid/len(sorted_indices)*100
+
+
+def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, budget: float):
+    """
+    Replaces elements in `a` with corresponding elements from `b` based on the top-k values in `delta`,
+    ensuring that the L2 distance between the modified `a` (denoted as `c`) and the original `a`
+    does not exceed `budget`.
+
+    Args:
+        a (torch.Tensor): Original tensor.
+        b (torch.Tensor): Replacement tensor.
+        delta (torch.Tensor): Difference tensor (|b - a|) used for ranking replacements.
+        budget (float): Maximum allowable L2 distance between `a` and the modified tensor `c`.
+
+    Returns:
+        torch.Tensor: Modified tensor `c` with selected replacements.
+    """
+    flat_delta = delta.view(-1)
+    flat_a = a.view(-1)
+    flat_b = b.view(-1)
+    
+    # Sort indices by delta in descending order (top-k replacement candidates)
+    sorted_indices = torch.argsort(flat_delta, descending=True)
+    
+    c = flat_a.clone()
+    best_c = c.clone()
+    best_l2_dist = torch.norm(best_c - flat_a, p=2).item()
+    
+    left, right = 0, len(sorted_indices)
+    
+    while left < right:
+        mid = (left + right) // 2
+        c[:] = flat_a  # Reset c to original a before each iteration
+        c[sorted_indices[:mid]] = flat_b[sorted_indices[:mid]]
+        l2_dist = torch.norm(c - flat_a, p=2).item()
+        
+        if l2_dist <= budget:
+            best_c = c.clone()
+            best_l2_dist = l2_dist
+            left = mid + 1
+        else:
+            right = mid - 1
+    
+    return best_c.view(a.shape)
 
 
 def restore_dict_grad(flat_grad, server_w, model_dict):
@@ -1310,12 +1342,13 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
     return mali_clients, mali_ids
 
 
-def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
+def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False, sync=True):
     server_weights = server.parameter_dict[mali_clients[0].model_name]
     if not mali_train:
         # malicious clients train on benign datasets
         for client in mali_clients:
-            client.synchronize_with_server(server)
+            if sync:
+                client.synchronize_with_server(server)
             benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
 
@@ -1328,7 +1361,8 @@ def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False):
     else:
         # malicious clients train on malicious datasets
         for client in mali_clients:
-            client.synchronize_with_server(server)
+            if sync:
+                client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(hp["local_epochs"])
             for name in client.W:
                 client.mali_grad[name] = client.W[name].detach() - server_weights[name].detach()
