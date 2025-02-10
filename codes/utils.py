@@ -514,6 +514,9 @@ def train_op_tr_flip_topk(ben=None, mali=None, server_state=None, budegt=None, m
     # print("grad_ben", grad_ben)
     
     distance = grad_dist(grad_ben, grad_mail, measure)
+    if measure == "cos":
+        budegt = 1 - budegt
+    
     print(f"{measure} distance: {distance}, budegt: {budegt}")
     
     if grad_dist(grad_ben, grad_mail, measure) < budegt:
