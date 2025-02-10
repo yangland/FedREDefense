@@ -578,7 +578,7 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
     
     c = flat_a.clone()
     
-    for idx in sorted_indices:
+    for i, idx in enumerate(sorted_indices):
         c[idx] = flat_b[idx]
         cos_sim = torch.nn.functional.cosine_similarity(a.view(1, -1), c.view(1, -1)).item()
         cos_dist = 1 - cos_sim
@@ -587,7 +587,7 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
             c[idx] = flat_a[idx]  # Revert change if budget exceeded
             break  # Stop replacing when budget is reached
     
-    return c.view(a.shape), idx/len(sorted_indices) * 100
+    return c.view(a.shape), i/len(sorted_indices) * 100
 
 
 def restore_dict_grad(flat_grad, server_w, model_dict):
