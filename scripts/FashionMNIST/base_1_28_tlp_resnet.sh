@@ -1,13 +1,13 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='0'
+export CUDA_VISIBLE_DEVICES='1'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"resnet8" : 100}],
+    "models" : [{"resnet8" : 10}],
 
-    "attack_rate" :  [0.28],
+    "attack_rate" :  [0.2],
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 

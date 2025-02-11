@@ -206,20 +206,18 @@ def run_experiment(xp, xp_count, n_experiments):
             # mali clients get benign grads
             mali_clients, mali_ids = get_mali_clients_this_round(
                 participating_clients, client_loaders, hp["attack_rate"])
-            mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
+            
+            mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_grad_all = \
                 mali_client_get_trial_updates(
                     mali_clients, server, hp, mali_train=False, sync=True)
+            
             if hp["attack_method"] == "UAM":
-                UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_mal_mean,
-                          mal_user_grad_mal_std, mali_ids_all, client_loaders, mali_clients)
+                UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_ben_mean,
+                          mal_user_grad_ben_std, mali_ids_all, client_loaders, mali_clients)
             elif hp["attack_method"] == "AOP":
                 # mali clients get mali grads
-                mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_grad_all = \
+                mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
                     mali_client_get_trial_updates(mali_clients, server, hp, mali_train=True, sync=True)
-                
-                # get pool_mali_grad updates
-                # malicc.synchronize_with_server(server)
-                # malicc.compute_weight_mali_update(hp["local_epochs"])
                 
                 
                 # Analysis the cos between mali adn benign
@@ -244,7 +242,7 @@ def run_experiment(xp, xp_count, n_experiments):
                 xp.log({"ben_cos_mean": ben_cos_mean})
                 xp.log({"mean_cos_mali_ben": mali_ben_mean_cos})                
 
-                logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}, mean {mali_ben_mean_cos}")
+                logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}")
 
 
         # Both benign and malicous clients compute weight update

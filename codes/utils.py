@@ -501,7 +501,7 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
     return {"loss": running_loss / samples}
 
 
-def train_op_tr_flip_topk(ben=None, mali=None, server=None, delta=None, budegt=None, measure="cos"):
+def train_op_tr_flip_topk(ben=None, mali=None, server=None, delta=None, budget=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
     ben_w = ben.to(device)
     mail_w = mali.to(device)
@@ -512,17 +512,17 @@ def train_op_tr_flip_topk(ben=None, mali=None, server=None, delta=None, budegt=N
     
     distance = grad_dist(ben_w-server_w, mail_w-server_w, measure)
     
-    print(f"{measure} distance: {distance}, budegt: {budegt}")
+    print(f"{measure} distance: {distance}, budget: {budget}")
     
-    if budegt==None or grad_dist(ben_w, mail_w, measure) < budegt :
+    if budget==None or grad_dist(ben_w, mail_w, measure) < budget :
         return mail_w, 100
     else:
-        # search a crafted model that within the given budegt
+        # search a crafted model that within the given budget
         if measure == "cos":
-            budegt = 1 - budegt
-            craft_mail, k = replace_topk_budget_cos(ben_w, delta, mail_w, server_w, budegt)
+            budget = 1 - budget
+            craft_mail, k = replace_topk_budget_cos(a=ben_w, b=mail_w, delta=delta, server=server_w, budget=budget)
         elif measure == "L2":
-            craft_mail, k = replace_topk_budget_l2(ben_w, delta, mail_w, server_w, budegt)
+            craft_mail, k = replace_topk_budget_l2(a=ben_w, b=mail_w, delta=delta, server=server_w, budget=budget)
     return craft_mail, k
 
 def grad_dist(a, b, measure):
@@ -1487,4 +1487,5 @@ def mean_cosine_similarity(A):
             cos_sims.append(cos_sim.item())
     
     cos_sims = torch.tensor(cos_sims)
+    print("cos_sims", cos_sims)
     return cos_sims.mean().item(), torch.median(cos_sims).item(), cos_sims.std().item()
