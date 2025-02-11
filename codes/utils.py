@@ -501,28 +501,24 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
     return {"loss": running_loss / samples}
 
 
-def train_op_tr_flip_topk(ben=None, mali=None, server=None, delta=None, budget=None, measure="cos"):
+def train_op_tr_flip_topk(ben_g=None, mali_g=None, delta=None, budget=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
-    ben_w = ben.to(device)
-    mail_w = mali.to(device)
-    server_w = server.to(device)
+    ben_g = flat_dict(ben_g).to(device)
+    mail_g = flat_dict(mali_g).to(device)
 
-    # print("grad_mail", grad_mail)
-    # print("grad_ben", grad_ben)
-    
-    distance = grad_dist(ben_w-server_w, mail_w-server_w, measure)
+    distance = grad_dist(ben_g, mail_g, measure)
     
     print(f"{measure} distance: {distance}, budget: {budget}")
     
-    if budget==None or grad_dist(ben_w, mail_w, measure) < budget :
-        return mail_w, 100
+    if budget==None or distance < budget :
+        return mail_g, 100
     else:
         # search a crafted model that within the given budget
         if measure == "cos":
             budget = 1 - budget
-            craft_mail, k = replace_topk_budget_cos(a=ben_w, b=mail_w, delta=delta, server=server_w, budget=budget)
+            craft_mail, k = replace_topk_budget_cos(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
         elif measure == "L2":
-            craft_mail, k = replace_topk_budget_l2(a=ben_w, b=mail_w, delta=delta, server=server_w, budget=budget)
+            craft_mail, k = replace_topk_budget_l2(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
     return craft_mail, k
 
 def grad_dist(a, b, measure):
@@ -552,15 +548,15 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
     flat_delta = delta.view(-1)
     flat_a = a.view(-1)
     flat_b = b.view(-1)
-    flat_s = server.view(-1)
+
     
     # Sort indices by delta in descending order (top-k replacement candidates)
     sorted_indices = torch.argsort(flat_delta, descending=True)
     
     c = flat_a.clone()
     best_c = c.clone()
-    best_cos_dist = 1 - torch.nn.functional.cosine_similarity((flat_a-flat_s).view(1, -1), 
-                                                              (best_c-flat_s).view(1, -1)).item()
+    best_cos_dist = 1 - torch.nn.functional.cosine_similarity(flat_a.view(1, -1), 
+                                                              best_c.view(1, -1)).item()
     
     left, right = 0, len(sorted_indices)
     
@@ -568,8 +564,8 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
         mid = (left + right) // 2
         c[:] = flat_a  # Reset c to original a before each iteration
         c[sorted_indices[:mid]] = flat_b[sorted_indices[:mid]]
-        cos_sim = torch.nn.functional.cosine_similarity((flat_a-flat_s).view(1, -1), 
-                                                        (best_c-flat_s).view(1, -1)).item()
+        cos_sim = torch.nn.functional.cosine_similarity(flat_a.view(1, -1), 
+                                                        best_c.view(1, -1)).item()
         cos_dist = 1 - cos_sim
         
         if cos_dist <= budget:
