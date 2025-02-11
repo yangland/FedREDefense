@@ -775,11 +775,15 @@ class Client_AOP(Device):
         self.all_grads = None
         self.min_idx_map = None
         self.ben_cos_mean = None
+        self.ben_cos_med = None
+        self.ben_cos_std = None
         self.pool_mali_grad = None
         self.mali_mean = None
+        self.server_w = None
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
+        self.server_w = {key: value for key, value in server.model_dict[self.model_name].named_parameters()}
         self.model.load_state_dict(self.server_state, strict=False)
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
@@ -807,19 +811,24 @@ class Client_AOP(Device):
         # 1. self.mali_grad - individual grad
         # 2. self.pool_mali_grad
         # 3. self.mal_user_grad_mean2 - benign mean
+        
         # delta between mali-benign mean and mali-mali mean
-        abs_delta = torch.abs(flat_dict_grad(self.mal_user_grad_mean2) - flat_dict_grad(self.mali_mean)).to(device)
-        craft_mali, k = train_op_tr_flip_topk(self.benign_grad, self.mali_grad, abs_delta,
-                                              budegt=self.ben_cos_mean, measure="cos")
-        # lambda_ = 1.5
-        restored_crafted = restore_dict_grad(craft_mali, flat_dict_grad(self.server_state), self.server_state)
+        abs_delta = torch.abs(flat_dict(self.mal_user_grad_mean2) - flat_dict(self.mali_mean)).to(device)
+        # print("abs_delta", abs_delta, torch.count_nonzero(abs_delta))
+        benign_w = flat_dict(self.benign_grad) + flat_dict(self.server_w)
+        mali_w = flat_dict(self.mali_grad) + flat_dict(self.server_w)
+        
+        craft_w, k = train_op_tr_flip_topk(benign_w, mali_w, abs_delta,
+                                              budget=self.ben_cos_med, measure="cos")
+
+        restored_crafted = restore_dict_w(craft_w, self.server_state)
         self.model.load_state_dict(restored_crafted)
         logger.info(f"client ID: {self.id}, k tops: {k}")
         return k
 
 
     def get_cloest_benign(self):
-        cos_sim, closest_tensor = closest_tensor_cosine_similarity(flat_dict_grad(self.mali_grad),
+        cos_sim, closest_tensor = closest_tensor_cosine_similarity(flat_dict(self.mali_grad),
                                                                    torch.tensor(self.all_grads).to(device))
         return cos_sim, closest_tensor
 
@@ -840,6 +849,7 @@ class Client_UAM(Device):
         self.scale = 3
         self.benign_grad = None
         self.mali_grad = None
+        
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -855,8 +865,8 @@ class Client_UAM(Device):
         # each malicoius client
         cos = nn.CosineSimilarity(dim=0, eps=1e-9)
         cos_simility_per_layer = None
-        cos_simility_flat = math.degrees(cos(flat_dict_grad(self.mal_user_grad_mean2),
-                                             flat_dict_grad(self.benign_grad)).item())
+        cos_simility_flat = math.degrees(cos(flat_dict(self.mal_user_grad_mean2),
+                                             flat_dict(self.benign_grad)).item())
 
         if per_layer:
             cos_simility_per_layer = dict()

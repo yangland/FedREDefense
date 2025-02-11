@@ -467,7 +467,7 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
     model.train()
     cos = nn.CosineSimilarity(dim=0, eps=1e-9)
     flat_ben = benign_mean.to(device)
-    flat_server = flat_dict_grad(server_state)
+    flat_server = flat_dict(server_state)
 
     running_loss, samples = 0.0, 0
     for ep in range(epochs):
@@ -501,27 +501,28 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
     return {"loss": running_loss / samples}
 
 
-def train_op_tr_flip_topk(ben=None, mali=None, abs_delta=None, budegt=None, measure="cos"):
+def train_op_tr_flip_topk(ben=None, mali=None, server=None, delta=None, budget=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
-    grad_ben = flat_dict_grad(ben).to(device)
-    grad_mail = flat_dict_grad(mali).to(device)
+    ben_w = ben.to(device)
+    mail_w = mali.to(device)
+    server_w = server.to(device)
 
     # print("grad_mail", grad_mail)
     # print("grad_ben", grad_ben)
     
-    distance = grad_dist(grad_ben, grad_mail, measure)
+    distance = grad_dist(ben_w-server_w, mail_w-server_w, measure)
     
-    print(f"{measure} distance: {distance}, budegt: {budegt}")
+    print(f"{measure} distance: {distance}, budget: {budget}")
     
-    if budegt==None or grad_dist(grad_ben, grad_mail, measure) < budegt :
-        return grad_mail, 100
+    if budget==None or grad_dist(ben_w, mail_w, measure) < budget :
+        return mail_w, 100
     else:
-        # search a crafted model that within the given budegt
+        # search a crafted model that within the given budget
         if measure == "cos":
-            budegt = 1 - budegt
-            craft_mail, k = replace_topk_budget_cos(grad_ben, abs_delta, grad_mail, budegt)
+            budget = 1 - budget
+            craft_mail, k = replace_topk_budget_cos(a=ben_w, b=mail_w, delta=delta, server=server_w, budget=budget)
         elif measure == "L2":
-            craft_mail, k = replace_topk_budget_l2(grad_ben, abs_delta, grad_mail, budegt)
+            craft_mail, k = replace_topk_budget_l2(a=ben_w, b=mail_w, delta=delta, server=server_w, budget=budget)
     return craft_mail, k
 
 def grad_dist(a, b, measure):
@@ -533,7 +534,7 @@ def grad_dist(a, b, measure):
         return torch.cdist(a, b, p=2)
 
 
-def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, budget: float):
+def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, server:torch.Tensor, budget: float):
     """
     Replaces elements in `a` with corresponding elements from `b` based on the top-k values in `delta`,
     ensuring that the cosine similarity between the modified `a` (denoted as `c`) and the original `a`
@@ -542,7 +543,7 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
     Args:
         a (torch.Tensor): Original tensor.
         b (torch.Tensor): Replacement tensor.
-        delta (torch.Tensor): Difference tensor (|b - a|) used for ranking replacements.
+        delta (torch.Tensor): Difference tensor used for ranking replacements.
         budget (float): Maximum allowable cosine distance between `a` and the modified tensor `c`.
 
     Returns:
@@ -551,13 +552,15 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
     flat_delta = delta.view(-1)
     flat_a = a.view(-1)
     flat_b = b.view(-1)
+    flat_s = server.view(-1)
     
     # Sort indices by delta in descending order (top-k replacement candidates)
     sorted_indices = torch.argsort(flat_delta, descending=True)
     
     c = flat_a.clone()
     best_c = c.clone()
-    best_cos_dist = 1 - torch.nn.functional.cosine_similarity(a.view(1, -1), best_c.view(1, -1)).item()
+    best_cos_dist = 1 - torch.nn.functional.cosine_similarity((flat_a-flat_s).view(1, -1), 
+                                                              (best_c-flat_s).view(1, -1)).item()
     
     left, right = 0, len(sorted_indices)
     
@@ -565,7 +568,8 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
         mid = (left + right) // 2
         c[:] = flat_a  # Reset c to original a before each iteration
         c[sorted_indices[:mid]] = flat_b[sorted_indices[:mid]]
-        cos_sim = torch.nn.functional.cosine_similarity(a.view(1, -1), c.view(1, -1)).item()
+        cos_sim = torch.nn.functional.cosine_similarity((flat_a-flat_s).view(1, -1), 
+                                                        (best_c-flat_s).view(1, -1)).item()
         cos_dist = 1 - cos_sim
         
         if cos_dist <= budget:
@@ -578,16 +582,17 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
     return best_c.view(a.shape), mid/len(sorted_indices)*100
 
 
-def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, budget: float):
+def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, server: torch.Tensor, budget: float):
     """
     Replaces elements in `a` with corresponding elements from `b` based on the top-k values in `delta`,
     ensuring that the L2 distance between the modified `a` (denoted as `c`) and the original `a`
-    does not exceed `budget`.
+    satisfies ||a - c||_2 <= budget.
 
     Args:
         a (torch.Tensor): Original tensor.
         b (torch.Tensor): Replacement tensor.
-        delta (torch.Tensor): Difference tensor (|b - a|) used for ranking replacements.
+        delta (torch.Tensor): Difference tensor used for ranking replacements.
+        server (torch.Tensor): Reference tensor.
         budget (float): Maximum allowable L2 distance between `a` and the modified tensor `c`.
 
     Returns:
@@ -596,13 +601,14 @@ def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor
     flat_delta = delta.view(-1)
     flat_a = a.view(-1)
     flat_b = b.view(-1)
+    flat_s = server.view(-1)
     
     # Sort indices by delta in descending order (top-k replacement candidates)
     sorted_indices = torch.argsort(flat_delta, descending=True)
     
     c = flat_a.clone()
     best_c = c.clone()
-    best_l2_dist = torch.norm(best_c - flat_a, p=2).item()
+    best_l2_dist = torch.norm((flat_a - flat_s) - (best_c - flat_s), p=2).item()
     
     left, right = 0, len(sorted_indices)
     
@@ -610,7 +616,7 @@ def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor
         mid = (left + right) // 2
         c[:] = flat_a  # Reset c to original a before each iteration
         c[sorted_indices[:mid]] = flat_b[sorted_indices[:mid]]
-        l2_dist = torch.norm(c - flat_a, p=2).item()
+        l2_dist = torch.norm((flat_a - flat_s) - (c - flat_s), p=2).item()
         
         if l2_dist <= budget:
             best_c = c.clone()
@@ -619,7 +625,7 @@ def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor
         else:
             right = mid - 1
     
-    return best_c.view(a.shape)
+    return best_c.view(a.shape), mid / len(sorted_indices) * 100
 
 
 def restore_dict_grad(flat_grad, server_w, model_dict):
@@ -629,6 +635,15 @@ def restore_dict_grad(flat_grad, server_w, model_dict):
         num_elements = param.numel()
         restored_grad[name] = flat_grad[start:start + num_elements].view(param.shape) + \
                             server_w[start:start + num_elements].view(param.shape)
+        start += num_elements
+    return restored_grad
+
+def restore_dict_w(flat_grad, model_dict):
+    restored_grad = {}
+    start = 0
+    for name, param in model_dict.items():
+        num_elements = param.numel()
+        restored_grad[name] = flat_grad[start:start + num_elements].view(param.shape)                          
         start += num_elements
     return restored_grad
 
@@ -907,7 +922,7 @@ def flat_grad(target, sources):
     user_flatten_grad = torch.stack(user_flatten_grad)
     return user_flatten_grad
 
-def flat_dict_grad(grad_dict):
+def flat_dict(grad_dict):
     user_flatten_grad = []
     for name, grad in grad_dict.items():
         user_flatten_grad.append(torch.flatten(grad.detach()))
@@ -1327,8 +1342,8 @@ def rotate_towards(a: torch.Tensor, b: torch.Tensor, gamma: float) -> torch.Tens
 
 def compute_cos_simility(a, b):
   cos = nn.CosineSimilarity(dim=0, eps=1e-9)
-  cos_simility_flat = math.degrees(cos(flat_dict_grad(a),
-                                          flat_dict_grad(b)).item())
+  cos_simility_flat = math.degrees(cos(flat_dict(a),
+                                          flat_dict(b)).item())
   return cos_simility_flat
 
 def get_mali_clients_this_round(participating_clients, client_loaders, attack_rate):
@@ -1448,17 +1463,17 @@ def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor
 
 
 def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
-    mal_mean = flat_dict_grad(mal_mean)
-    ben_mean = flat_dict_grad(ben_mean)
+    mal_mean = flat_dict(mal_mean)
+    ben_mean = flat_dict(ben_mean)
 
-    ben_cos_mean, ben_cos_std = mean_cosine_similarity(ben_all)
+    ben_cos_mean, ben_cos_med, ben_cos_std = mean_cosine_similarity(ben_all)
 
     mal_mean = mal_mean / mal_mean.norm(dim=0, keepdim=True)  
     ben_mean = ben_mean / ben_mean.norm(dim=0, keepdim=True) 
     mali_ben_mean_cos = torch.nn.functional.cosine_similarity(mal_mean, ben_mean, dim=0).item()
     cos_matrix = pairwise_cosine_similarity(torch.tensor(mal_all), torch.tensor(ben_all))
     min_idx = cos_matrix.argmin(dim=1)
-    return cos_matrix, min_idx, ben_cos_mean, mali_ben_mean_cos
+    return cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos
 
 
 def mean_cosine_similarity(A):
@@ -1472,4 +1487,5 @@ def mean_cosine_similarity(A):
             cos_sims.append(cos_sim.item())
     
     cos_sims = torch.tensor(cos_sims)
-    return cos_sims.mean().item(), cos_sims.std().item()
+    # print("cos_sims", cos_sims)
+    return cos_sims.mean().item(), torch.median(cos_sims).item(), cos_sims.std().item()
