@@ -1487,5 +1487,5 @@ def mean_cosine_similarity(A):
             cos_sims.append(cos_sim.item())
     
     cos_sims = torch.tensor(cos_sims)
-    print("cos_sims", cos_sims)
+    # print("cos_sims", cos_sims)
     return cos_sims.mean().item(), torch.median(cos_sims).item(), cos_sims.std().item()
