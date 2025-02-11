@@ -223,15 +223,19 @@ def run_experiment(xp, xp_count, n_experiments):
                 
                 
                 # Analysis the cos between mali adn benign
-                cos_matrix, min_idx, ben_cos_mean, mali_ben_mean_cos = cosine_similarity_mal_ben(mal_grad_all, 
-                                                                                                 ben_grad_all, 
-                                                                                        mal_user_grad_mal_mean, 
-                                                                                        mal_user_grad_ben_mean)
+                cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos = \
+                    cosine_similarity_mal_ben(mal_grad_all, 
+                                                ben_grad_all, 
+                                                mal_user_grad_mal_mean, 
+                                                mal_user_grad_ben_mean)
                 
                 for client in mali_clients:
                     client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
                     client.ben_cos_mean = ben_cos_mean
+                    client.ben_cos_med = ben_cos_med
+                    client.ben_cos_std = ben_cos_std
                     client.mali_mean = mal_user_grad_mal_mean
+                    
                     # pool_mali_w = malicc.W
                     # client.pool_mali_grad = reduce_residual(pool_mali_w, server.models[0].state_dict())
                     
