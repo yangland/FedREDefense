@@ -815,15 +815,15 @@ class Client_AOP(Device):
         # delta between mali-benign mean and mali-mali mean
         abs_delta = torch.abs(flat_dict(self.mal_user_grad_mean2) - flat_dict(self.mali_mean)).to(device)
         # print("abs_delta", abs_delta, torch.count_nonzero(abs_delta))
-        # benign_w = flat_dict(self.benign_grad) + flat_dict(self.server_w)
-        # mali_w = flat_dict(self.mali_grad) + flat_dict(self.server_w)
+
         benign_g = self.benign_grad
         mali_g = self.mali_grad
+        budget_3sigma = (1 - self.ben_cos_med) + self.ben_cos_std * 3
         
         craft_g, k = train_op_tr_flip_topk(ben_g=benign_g, 
                                             mali_g=mali_g, 
                                             delta=abs_delta,
-                                            budget=self.ben_cos_med, 
+                                            budget=budget_3sigma, 
                                             measure="cos")
 
         restored_crafted = restore_dict_grad(craft_g, flat_dict(self.server_w), self.server_state)

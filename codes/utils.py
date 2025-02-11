@@ -515,7 +515,7 @@ def train_op_tr_flip_topk(ben_g=None, mali_g=None, delta=None, budget=None, meas
     else:
         # search a crafted model that within the given budget
         if measure == "cos":
-            budget = 1 - budget
+            # budget = 1 - budget
             craft_mail, k = replace_topk_budget_cos(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
         elif measure == "L2":
             craft_mail, k = replace_topk_budget_l2(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
@@ -565,7 +565,7 @@ def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tenso
         c[:] = flat_a  # Reset c to original a before each iteration
         c[sorted_indices[:mid]] = flat_b[sorted_indices[:mid]]
         cos_sim = torch.nn.functional.cosine_similarity(flat_a.view(1, -1), 
-                                                        best_c.view(1, -1)).item()
+                                                        c.view(1, -1)).item()
         cos_dist = 1 - cos_sim
         
         if cos_dist <= budget:

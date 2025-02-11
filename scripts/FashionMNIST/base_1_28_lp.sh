@@ -26,7 +26,7 @@ hyperparameters04='[{
     "right_ben" : [0],
     "noise" : [0.001],
     "turn" : [0],
-    "objective": ["targeted_label_flip"],
+    "objective": ["label_flip"],
     "search_algo": ["MADS"]
     }]'
 
