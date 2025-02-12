@@ -816,14 +816,19 @@ class Client_AOP(Device):
         abs_delta = torch.abs(flat_dict(self.mal_user_grad_mean2) - flat_dict(self.mali_mean)).to(device)
         # print("abs_delta", abs_delta, torch.count_nonzero(abs_delta))
 
-        benign_g = self.benign_grad
-        mali_g = self.mali_grad
-        budget_3sigma = (1 - self.ben_cos_med) + self.ben_cos_std * 3
+        # benign_g = self.benign_grad
+        # mali_g = self.mali_grad
+        benign_g = self.mal_user_grad_mean2
+        mali_g = self.mali_mean
         
-        craft_g, k = train_op_tr_flip_topk(ben_g=benign_g, 
-                                            mali_g=mali_g, 
-                                            delta=abs_delta,
-                                            budget=budget_3sigma, 
+        budget_1sigma = (1 - self.ben_cos_med) + self.ben_cos_std * 1
+        budget_med = 1 - self.ben_cos_med
+        budget_mean = 1 - self.ben_cos_mean
+        budget_ben_to_mean = 1 - self.ben_cos_to_mean
+        
+        craft_g, k = craft_mali_weighted_avg(ben_g=benign_g, 
+                                            mali_g=mali_g,
+                                            budget=budget_ben_to_mean, 
                                             measure="cos")
 
         restored_crafted = restore_dict_grad(craft_g, flat_dict(self.server_w), self.server_state)

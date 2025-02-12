@@ -501,7 +501,7 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
     return {"loss": running_loss / samples}
 
 
-def train_op_tr_flip_topk(ben_g=None, mali_g=None, delta=None, budget=None, measure="cos"):
+def craft_mali_topk(ben_g=None, mali_g=None, delta=None, budget=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
     ben_g = flat_dict(ben_g).to(device)
     mail_g = flat_dict(mali_g).to(device)
@@ -515,11 +515,30 @@ def train_op_tr_flip_topk(ben_g=None, mali_g=None, delta=None, budget=None, meas
     else:
         # search a crafted model that within the given budget
         if measure == "cos":
-            # budget = 1 - budget
             craft_mail, k = replace_topk_budget_cos(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
         elif measure == "L2":
             craft_mail, k = replace_topk_budget_l2(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
     return craft_mail, k
+
+
+def craft_mali_weighted_avg(ben_g=None, mali_g=None, budget=None, measure="cos"):
+    # Output crafted grad that replace topk in ben with mail within the attack budget
+    ben_g = flat_dict(ben_g).to(device)
+    mail_g = flat_dict(mali_g).to(device)
+
+    distance = grad_dist(ben_g, mail_g, measure)
+    
+    print(f"{measure} distance: {distance}, budget: {budget}")
+    
+    if budget==None or distance < budget :
+        return mail_g, 100
+    else:
+        # search a crafted model that within the given budget
+        if measure == "cos":
+            craft_mail, k = weighted_avg_budget_cos(a=ben_g, b=mail_g, budget=budget)
+    return craft_mail, k
+
+
 
 def grad_dist(a, b, measure):
     # a, b as 1D tensor
@@ -528,6 +547,43 @@ def grad_dist(a, b, measure):
         return 1 - cos_d(a, b)
     if measure == "L2":
         return torch.cdist(a, b, p=2)
+
+
+def weighted_avg_budget_cos(a: torch.Tensor, b: torch.Tensor, budget: float):
+    """
+    Compute tensor c as a weighted average of a and b such that:
+        c = t * a + (1 - t) * b
+    where t is in [0,1] and ensures that 1 - cos(a, c) <= budget.
+
+    Uses binary search to find the optimal t.
+
+    :param a: Tensor
+    :param b: Tensor
+    :param budget: Float, constraint on 1 - cosine similarity
+    :return: Tuple (c, t)
+    """
+    
+    def cosine_similarity(x, y):
+        return torch.nn.functional.cosine_similarity(x.flatten(), y.flatten(), dim=0)
+    
+    left, right = 0.0, 1.0
+    best_t = right
+    while right - left > 1e-6:
+        # print("left,right", left, right)
+        mid = (left + right) / 2
+        c = mid * a + (1 - mid) * b
+        cos_sim = cosine_similarity(a, c)
+        # print("cos", cos_sim)
+        if 1 - cos_sim <= budget:
+            best_t = mid  # Store valid t
+            right = mid  # Try a smaller t
+        else:
+            left = mid  # Increase t
+    
+    c = best_t * a + (1 - best_t) * b
+    return c, best_t*100
+
+
 
 
 def replace_topk_budget_cos(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor, server:torch.Tensor, budget: float):
@@ -1459,6 +1515,9 @@ def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor
 
 
 def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
+    """
+    find cos simliarity between mali and benign grads
+    """
     mal_mean = flat_dict(mal_mean)
     ben_mean = flat_dict(ben_mean)
 
@@ -1469,7 +1528,10 @@ def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     mali_ben_mean_cos = torch.nn.functional.cosine_similarity(mal_mean, ben_mean, dim=0).item()
     cos_matrix = pairwise_cosine_similarity(torch.tensor(mal_all), torch.tensor(ben_all))
     min_idx = cos_matrix.argmin(dim=1)
-    return cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos
+    
+    ben_all_norm = torch.nn.functional.normalize(torch.tensor(ben_all).to(device), p=2, dim=1)
+    ben_cos_to_mean = (ben_mean * ben_all_norm).sum(dim=1).median().item()
+    return cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos, ben_cos_to_mean
 
 
 def mean_cosine_similarity(A):
