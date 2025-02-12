@@ -7,7 +7,7 @@ hyperparameters04='[{
     "dataset" : ["fmnist"],
     "models" : [{"resnet8" : 10}],
 
-    "attack_rate" :  [0.2],
+    "attack_rate" :  [0.3],
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 

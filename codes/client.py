@@ -831,7 +831,12 @@ class Client_AOP(Device):
                                             budget=budget_ben_to_mean, 
                                             measure="cos")
 
-        restored_crafted = restore_dict_grad(craft_g, flat_dict(self.server_w), self.server_state)
+        # print("len craft_g", len(craft_g)) # 4902090
+        # print("self.server_w", len(flat_dict(self.server_w))) # 4902090
+        
+        restored_crafted = restore_dict_grad(craft_g, self.server_w, self.server_state)
+        
+        
         self.model.load_state_dict(restored_crafted)
         logger.info(f"client ID: {self.id}, k tops: {k}")
         return k

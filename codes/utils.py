@@ -681,23 +681,38 @@ def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor
 
 
 def restore_dict_grad(flat_grad, server_w, model_dict):
-    restored_grad = {}
+    state_dict_keys = set(model_dict.keys())
+    param_dict_keys = set(server_w.keys())
+    
+    missing_keys = state_dict_keys - param_dict_keys    
+    
+    restored_w = {}
     start = 0
     for name, param in model_dict.items():
-        num_elements = param.numel()
-        restored_grad[name] = flat_grad[start:start + num_elements].view(param.shape) + \
-                            server_w[start:start + num_elements].view(param.shape)
-        start += num_elements
-    return restored_grad
+        if name not in missing_keys:
+            num_elements = param.numel()
+            restored_w[name] = flat_grad[start:start + num_elements].view(param.shape)                          
+            start += num_elements
+        else:
+            restored_w[name] = model_dict[name]
+    return restored_w
 
-def restore_dict_w(flat_grad, model_dict):
-    restored_grad = {}
+def restore_dict_w(param_dict, model_dict):
+    state_dict_keys = set(model_dict.keys())
+    param_dict_keys = set(param_dict.keys())
+
+    missing_keys = state_dict_keys - param_dict_keys
+    
+    restored_w = {}
     start = 0
     for name, param in model_dict.items():
-        num_elements = param.numel()
-        restored_grad[name] = flat_grad[start:start + num_elements].view(param.shape)                          
-        start += num_elements
-    return restored_grad
+        if name not in missing_keys:
+            num_elements = param.numel()
+            restored_w[name] = param_dict[start:start + num_elements].view(param.shape)                          
+            start += num_elements
+        else:
+            restored_w[name] = model_dict[name]
+    return restored_w
 
 def eval_epoch(model, loader):
     running_loss, samples = 0.0, 0
@@ -1546,4 +1561,4 @@ def mean_cosine_similarity(A):
     
     cos_sims = torch.tensor(cos_sims)
     # print("cos_sims", cos_sims)
-    return cos_sims.mean().item(), torch.median(cos_sims).item(), cos_sims.std().item()
+    return cos_sims.mean().item(), torch.median(cos_sims).item(), torch.std(cos_sims, dim=0).item()

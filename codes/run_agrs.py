@@ -234,9 +234,7 @@ def run_experiment(xp, xp_count, n_experiments):
                     client.ben_cos_std = ben_cos_std
                     client.mali_mean = mal_user_grad_mal_mean
                     client.ben_cos_to_mean = ben_cos_to_mean
-                    
-                    # pool_mali_w = malicc.W
-                    # client.pool_mali_grad = reduce_residual(pool_mali_w, server.models[0].state_dict())
+
                     
                 xp.log({"mali_ben_cos_mat": cos_matrix.detach().cpu().numpy()}, printout=False)
                 xp.log({"mali-ben_map": min_idx})
