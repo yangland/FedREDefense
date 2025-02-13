@@ -168,7 +168,7 @@ def convert_to_state_dict(layer_counts, state_dict):
     return state_dict
 
 
-def plot_layer_weights(layer, layer_name, save_plot=False):
+def plot_layer_weights(layer_name, layer,  save_plot=False):
     """
     Plots the weights of a specific layer in a PyTorch model as a heatmap.
     
@@ -230,7 +230,7 @@ def main():
     
     # print("state_dict", list(state_dict.values())[0])
     for layer_name, parameter in state_dict.items():
-        plot_layer_weights(parameter, layer_name, save_plot=True)
+        plot_layer_weights(layer_name, parameter, save_plot=True)
         
     
 if __name__=="__main__":
