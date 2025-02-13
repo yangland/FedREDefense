@@ -715,6 +715,7 @@ def restore_dict_w(param_dict, model_dict):
     return restored_w
 
 def eval_epoch(model, loader):
+    model.eval()
     running_loss, samples = 0.0, 0
     with torch.no_grad():
         for x, y in loader:
@@ -771,7 +772,8 @@ def kd_loss(output, y):
 
 
 def eval_op(model, loader):
-    model.train()
+    # model.train()
+    model.eval()
     samples, correct = 0, 0
 
     with torch.no_grad():
@@ -834,7 +836,8 @@ def eval_op_ensemble(models, test_loader):
 
 def eval_op_ensemble_attack_with_preds(models, loader):
     for model in models: 
-        model.train()
+        # model.train()
+        model.eval()
     samples, correct = 0, 0
     trigger_value = 1
     target = 0
@@ -893,7 +896,8 @@ def eval_op_ensemble_with_preds(models, test_loader):
 
 def eval_op_ensemble_attack(models, loader):
     for model in models: 
-        model.train()
+        #model.train()
+        model.eval()
     samples, correct = 0, 0
     trigger_value = 1
     target = 0
@@ -923,7 +927,7 @@ def eval_op_ensemble_attack(models, loader):
 
 def eval_op_ensemble_tr_lf_attack(models, loader):
     for model in models: 
-        model.train()
+        model.eval()
     samples, correct = 0, 0
     trigger_value = 1
     source= 0
