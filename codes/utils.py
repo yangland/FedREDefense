@@ -524,8 +524,8 @@ def craft_mali_topk(ben_g=None, mali_g=None, delta=None, budget=None, measure="c
 
 def craft_mali_weighted_avg(ben_g=None, mali_g=None, budget=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
-    ben_g = flat_dict(ben_g).to(device)
-    mali_g = flat_dict(mali_g).to(device)
+    # ben_g = flat_dict(ben_g).to(device)
+    # mali_g = flat_dict(mali_g).to(device)
 
     distance = grad_dist(ben_g, mali_g, measure)
     
@@ -543,17 +543,21 @@ def craft_mali_weighted_avg(ben_g=None, mali_g=None, budget=None, measure="cos")
 def craft_critical_layer(ben_g=None, mali_g=None, budget=None, measure="cos", critical_layer=None):
     # distance before replacing critical layer
     org_dist = grad_dist(ben_g, mali_g, measure)
+    k = 100
+    
+    # if org_dist < budget :
+    #     return mali_g, k
     
     # attack uses only the classification layer, others stay the same
     crafted_g = deepcopy(ben_g)
-    crafted_g[critical_layer] = mali_g[critical_layer]
+    crafted_g[critical_layer] = mali_g[critical_layer] 
     
     crafted_dist = grad_dist(ben_g, crafted_g, measure)
     
     print(f"{measure} org dist: {org_dist}, craft dist: {crafted_dist}, budget: {budget}")
     
     # k represent % of the mali can be kept
-    k = 100
+    
     if budget==None or crafted_dist < budget :
         print("crafted gradient within the budget")
         return crafted_g, k
@@ -784,11 +788,31 @@ def restore_dict_grad_flat(flat_grad, server_w, model_dict):
     for name, param in model_dict.items():
         if name not in missing_keys:
             num_elements = param.numel()
-            restored_w[name] = flat_grad[start:start + num_elements].view(param.shape)                          
+            restored_w[name] = flat_grad[start:start + num_elements].view(param.shape) + server_w[name]                         
             start += num_elements
         else:
             restored_w[name] = model_dict[name]
     return restored_w
+
+
+def restore_dict_grad_dict(grad_dict, server_w, model_dict):
+    state_dict_keys = set(model_dict.keys())
+    param_dict_keys = set(server_w.keys())
+    
+    missing_keys = state_dict_keys - param_dict_keys    
+    
+    restored_w = {}
+
+    for name, param in model_dict.items():
+        if name not in missing_keys:
+
+            restored_w[name] = grad_dict[name] + + server_w[name]                           
+
+        else:
+            restored_w[name] = model_dict[name]
+    return restored_w
+
+
 
 def restore_dict_w(param_dict, model_dict):
     state_dict_keys = set(model_dict.keys())

@@ -842,7 +842,7 @@ class Client_AOP(Device):
                                             critical_layer=self.critical_layer)
         
         
-        restored_crafted = restore_dict_grad_flat(flat_dict(craft_g), self.server_w, self.server_state)
+        restored_crafted = restore_dict_grad_dict(craft_g, self.server_w, self.server_state)
         
         
         self.model.load_state_dict(restored_crafted)
