@@ -294,6 +294,8 @@ def run_experiment(xp, xp_count, n_experiments):
                         att_result = server.evaluate_tr_lf_attack().items()
                     elif hp["objective"] == "label_flip":
                         att_result = {}
+                    elif hp["objective"] == "Backdoor":
+                        att_result = server.evaluate_attack().items()
                     else:
                         raise Exception("Unknown UAM_mode")
                 xp.log({"server_att_{}_a_{}".format(                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
