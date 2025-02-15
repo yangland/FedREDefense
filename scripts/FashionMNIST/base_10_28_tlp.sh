@@ -11,7 +11,7 @@ hyperparameters04='[{
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 
-    "alpha" : [10],
+    "alpha" : [5],
     "communication_rounds" : [300],
     "local_epochs" : [1],
     "batch_size" : [32],

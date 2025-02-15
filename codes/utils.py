@@ -576,11 +576,12 @@ def critical_layer_budget_cos(ben_g, mali_g, critical_layer, budget):
     left, right = 0.0, 1.0
     best_k = right
     while right - left > 1e-6:
-        # print("left,right", left, right)
         mid = (left + right) / 2
+        print("left,right, mid", left, right, mid)
         crafted_g = merge_model_layer_random(ben_g, mali_g, critical_layer, mid)
-        cos_sim = cosine_similarity(ben_g, crafted_g)
-        if 1 - cos_sim <= budget:
+        cos_sim = cosine_similarity(torch.tensor(flat_dict(ben_g)), torch.tensor(flat_dict(crafted_g)))
+        print("cos dist", 1 - cos_sim)
+        if 1 - cos_sim > budget:
             best_k = mid  # Store valid t
             right = mid  # Try a smaller t
         else:
@@ -611,10 +612,10 @@ def merge_model_layer_random(a_state_dict: dict, b_state_dict: dict, layer_name:
     # Get the parameters of the specified layer from a and b
     a_params = a_state_dict[layer_name]
     b_params = b_state_dict[layer_name]
-    c_params = c_state_dict[layer_name]
     
     num_params = a_params.numel()
     num_selected = int(k * num_params)
+    print(f"num_params: {num_params}, num_selected: {num_selected}")
     
     # Generate random indices to select k% of the parameters
     indices = torch.randperm(num_params)[:num_selected]
@@ -622,16 +623,16 @@ def merge_model_layer_random(a_state_dict: dict, b_state_dict: dict, layer_name:
     # Flatten tensors for easy indexing
     a_params_flat = a_params.clone().view(-1)
     b_params_flat = b_params.clone().view(-1)
-    c_params_flat = c_params.clone().view(-1)
+    c_params_flat = a_params_flat.clone()
     
     # Copy selected indices from b to c
     c_params_flat[indices] = b_params_flat[indices]
     
-    # Reshape c's parameters back to original shape
-    with torch.no_grad():
-        c_params.copy_(c_params_flat.view(a_params.shape))
+    # Reshape and update c_state_dict
+    c_state_dict[layer_name] = c_params_flat.view(a_params.shape)
     
     return c_state_dict
+
 
 
 def grad_dist(a, b, measure):

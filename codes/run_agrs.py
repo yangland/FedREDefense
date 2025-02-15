@@ -209,7 +209,7 @@ def run_experiment(xp, xp_count, n_experiments):
             
             mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_grad_all = \
                 mali_client_get_trial_updates(
-                    mali_clients, server, hp, mali_train=False, sync=True)
+                    mali_clients, server, hp, mali_train=False, sync=False)
             
             if hp["attack_method"] == "UAM":
                 UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_ben_mean,
