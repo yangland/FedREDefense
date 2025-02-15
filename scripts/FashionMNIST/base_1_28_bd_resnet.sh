@@ -28,7 +28,7 @@ hyperparameters04='[{
     "turn" : [0],
     "objective": ["Backdoor"],
     "search_algo": ["MADS"],
-    "critical_layer": ["classifier.weight"]
+    "critical_layer": ["classification_layer.weight"]
     }]'
 
 
