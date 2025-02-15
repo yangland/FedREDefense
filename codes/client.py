@@ -780,6 +780,7 @@ class Client_AOP(Device):
         self.pool_mali_grad = None
         self.mali_mean = None
         self.server_w = None
+        self.critical_layer = None
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -826,15 +827,22 @@ class Client_AOP(Device):
         budget_mean = 1 - self.ben_cos_mean
         budget_ben_to_mean = 1 - self.ben_cos_to_mean
         
-        craft_g, k = craft_mali_weighted_avg(ben_g=benign_g, 
-                                            mali_g=mali_g,
-                                            budget=budget_ben_to_mean, 
-                                            measure="cos")
+        # craft_g, k = craft_mali_weighted_avg(ben_g=benign_g, 
+        #                                     mali_g=mali_g,
+        #                                     budget=budget_ben_to_mean, 
+        #                                     measure="cos")
 
         # print("len craft_g", len(craft_g)) # 4902090
         # print("self.server_w", len(flat_dict(self.server_w))) # 4902090
         
-        restored_crafted = restore_dict_grad(craft_g, self.server_w, self.server_state)
+        craft_g, k = craft_critical_layer(ben_g=benign_g, 
+                                            mali_g=mali_g,
+                                            budget=budget_ben_to_mean, 
+                                            measure="cos",
+                                            critical_layer=self.critical_layer)
+        
+        
+        restored_crafted = restore_dict_grad_flat(flat_dict(craft_g), self.server_w, self.server_state)
         
         
         self.model.load_state_dict(restored_crafted)

@@ -234,6 +234,7 @@ def run_experiment(xp, xp_count, n_experiments):
                     client.ben_cos_std = ben_cos_std
                     client.mali_mean = mal_user_grad_mal_mean
                     client.ben_cos_to_mean = ben_cos_to_mean
+                    client.critical_layer = hp["critical_layer"]
 
                     
                 xp.log({"mali_ben_cos_mat": cos_matrix.detach().cpu().numpy()}, printout=False)

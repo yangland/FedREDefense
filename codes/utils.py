@@ -14,10 +14,11 @@ from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 from scipy.ndimage.interpolation import rotate as scipyrotate
 import hdbscan
-from copy import deepcopy
+# from copy import deepcopy
 import sklearn.metrics.pairwise as smp
 import math
 import logging
+from copy import deepcopy
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 logger = logging.getLogger("logger")
 
@@ -504,44 +505,136 @@ def train_op_tr_flip_aop(model, loader, optimizer, epochs, class_num=10, benign_
 def craft_mali_topk(ben_g=None, mali_g=None, delta=None, budget=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
     ben_g = flat_dict(ben_g).to(device)
-    mail_g = flat_dict(mali_g).to(device)
+    mali_g = flat_dict(mali_g).to(device)
 
-    distance = grad_dist(ben_g, mail_g, measure)
+    distance = grad_dist(ben_g, mali_g, measure)
     
     print(f"{measure} distance: {distance}, budget: {budget}")
     
     if budget==None or distance < budget :
-        return mail_g, 100
+        return mali_g, 100
     else:
         # search a crafted model that within the given budget
         if measure == "cos":
-            craft_mail, k = replace_topk_budget_cos(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
+            craft_mail, k = replace_topk_budget_cos(a=ben_g, b=mali_g, delta=delta, server=None, budget=budget)
         elif measure == "L2":
-            craft_mail, k = replace_topk_budget_l2(a=ben_g, b=mail_g, delta=delta, server=None, budget=budget)
+            craft_mail, k = replace_topk_budget_l2(a=ben_g, b=mali_g, delta=delta, server=None, budget=budget)
     return craft_mail, k
 
 
 def craft_mali_weighted_avg(ben_g=None, mali_g=None, budget=None, measure="cos"):
     # Output crafted grad that replace topk in ben with mail within the attack budget
     ben_g = flat_dict(ben_g).to(device)
-    mail_g = flat_dict(mali_g).to(device)
+    mali_g = flat_dict(mali_g).to(device)
 
-    distance = grad_dist(ben_g, mail_g, measure)
+    distance = grad_dist(ben_g, mali_g, measure)
     
     print(f"{measure} distance: {distance}, budget: {budget}")
     
     if budget==None or distance < budget :
-        return mail_g, 100
+        return mali_g, 100
     else:
         # search a crafted model that within the given budget
         if measure == "cos":
-            craft_mail, k = weighted_avg_budget_cos(a=ben_g, b=mail_g, budget=budget)
+            craft_mail, k = weighted_avg_budget_cos(a=ben_g, b=mali_g, budget=budget)
     return craft_mail, k
 
+
+def craft_critical_layer(ben_g=None, mali_g=None, budget=None, measure="cos", critical_layer=None):
+    # distance before replacing critical layer
+    org_dist = grad_dist(ben_g, mali_g, measure)
+    
+    # attack uses only the classification layer, others stay the same
+    crafted_g = deepcopy(ben_g)
+    crafted_g[critical_layer] = mali_g[critical_layer]
+    
+    crafted_dist = grad_dist(ben_g, crafted_g, measure)
+    
+    print(f"{measure} org dist: {org_dist}, craft dist: {crafted_dist}, budget: {budget}")
+    
+    # k represent % of the mali can be kept
+    k = 100
+    if budget==None or crafted_dist < budget :
+        print("crafted gradient within the budget")
+        return crafted_g, k
+    else:
+        # search a crafted model that within the given budget
+        if measure == "cos":
+            crafted_g, k = critical_layer_budget_cos(ben_g, mali_g, critical_layer, budget)
+        return crafted_g, k
+
+
+def critical_layer_budget_cos(ben_g, mali_g, critical_layer, budget):
+    # randomly select k% of the critical layer 
+    def cosine_similarity(x, y):
+        return torch.nn.functional.cosine_similarity(x.flatten(), y.flatten(), dim=0)
+    
+    left, right = 0.0, 1.0
+    best_k = right
+    while right - left > 1e-6:
+        # print("left,right", left, right)
+        mid = (left + right) / 2
+        crafted_g = merge_model_layer_random(ben_g, mali_g, critical_layer, mid)
+        cos_sim = cosine_similarity(ben_g, crafted_g)
+        if 1 - cos_sim <= budget:
+            best_k = mid  # Store valid t
+            right = mid  # Try a smaller t
+        else:
+            left = mid  # Increase t
+    
+    crafted_g = merge_model_layer_random(ben_g, mali_g, critical_layer, best_k)
+    
+    return crafted_g, best_k*100
+
+
+
+def merge_model_layer_random(a_state_dict: dict, b_state_dict: dict, layer_name: str, k: float) -> dict:
+    """
+    Creates a new model c, which is initialized from a_state_dict, except that k% of the parameters
+    in the specified layer are taken from b_state_dict.
+
+    Args:
+        a_state_dict (dict): State dictionary of the first model.
+        b_state_dict (dict): State dictionary of the second model (same structure as a_state_dict).
+        layer_name (str): Name of the layer to partially merge (e.g., "classifier.weight").
+        k (float): Percentage of elements to take from b (0 < k <= 1).
+
+    Returns:
+        dict: State dictionary of the new model c with mixed parameters.
+    """
+    c_state_dict = deepcopy(a_state_dict)  # Clone a's state dict
+    
+    # Get the parameters of the specified layer from a and b
+    a_params = a_state_dict[layer_name]
+    b_params = b_state_dict[layer_name]
+    c_params = c_state_dict[layer_name]
+    
+    num_params = a_params.numel()
+    num_selected = int(k * num_params)
+    
+    # Generate random indices to select k% of the parameters
+    indices = torch.randperm(num_params)[:num_selected]
+    
+    # Flatten tensors for easy indexing
+    a_params_flat = a_params.clone().view(-1)
+    b_params_flat = b_params.clone().view(-1)
+    c_params_flat = c_params.clone().view(-1)
+    
+    # Copy selected indices from b to c
+    c_params_flat[indices] = b_params_flat[indices]
+    
+    # Reshape c's parameters back to original shape
+    with torch.no_grad():
+        c_params.copy_(c_params_flat.view(a_params.shape))
+    
+    return c_state_dict
 
 
 def grad_dist(a, b, measure):
     # a, b as 1D tensor
+    a = flat_dict(a).to(device)
+    b = flat_dict(b).to(device)
+    
     if measure == "cos":
         cos_d = nn.CosineSimilarity(dim=0, eps=1e-9)
         return 1 - cos_d(a, b)
@@ -680,7 +773,7 @@ def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor
     return best_c.view(a.shape), mid / len(sorted_indices) * 100
 
 
-def restore_dict_grad(flat_grad, server_w, model_dict):
+def restore_dict_grad_flat(flat_grad, server_w, model_dict):
     state_dict_keys = set(model_dict.keys())
     param_dict_keys = set(server_w.keys())
     

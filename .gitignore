@@ -162,4 +162,4 @@ cython_debug/
 /results
 /data
 /codes/data
-/codes/old_ipynb
+*.pth

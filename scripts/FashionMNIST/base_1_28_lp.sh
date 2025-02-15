@@ -27,7 +27,8 @@ hyperparameters04='[{
     "noise" : [0.001],
     "turn" : [0],
     "objective": ["label_flip"],
-    "search_algo": ["MADS"]
+    "search_algo": ["MADS"],
+    "critical_layer": ["classifier.weight"]
     }]'
 
 
