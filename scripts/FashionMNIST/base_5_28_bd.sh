@@ -14,6 +14,7 @@ hyperparameters04='[{
     "alpha" : [5],
     "communication_rounds" : [300],
     "local_epochs" : [1],
+    "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
     "aggregation_mode" : ["flame"],

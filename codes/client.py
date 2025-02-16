@@ -822,9 +822,9 @@ class Client_AOP(Device):
         benign_g = self.mal_user_grad_mean2
         mali_g = self.mali_mean
         
-        budget_1sigma = (1 - self.ben_cos_med) + self.ben_cos_std * 1
-        budget_med = 1 - self.ben_cos_med
-        budget_mean = 1 - self.ben_cos_mean
+        # budget_1sigma = (1 - self.ben_cos_med) + self.ben_cos_std * 1
+        # budget_med = 1 - self.ben_cos_med
+        # budget_mean = 1 - self.ben_cos_mean
         budget_ben_to_mean = 1 - self.ben_cos_to_mean
         
         # craft_g, k = craft_mali_weighted_avg(ben_g=benign_g, 
@@ -841,9 +841,7 @@ class Client_AOP(Device):
                                             measure="cos",
                                             critical_layer=self.critical_layer)
         
-        
         restored_crafted = restore_dict_grad_dict(craft_g, self.server_w, self.server_state)
-        
         
         self.model.load_state_dict(restored_crafted)
         logger.info(f"client ID: {self.id}, k tops: {k}")

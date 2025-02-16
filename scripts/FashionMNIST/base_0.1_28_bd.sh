@@ -11,9 +11,10 @@ hyperparameters04='[{
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 
-    "alpha" : [1.0],
+    "alpha" : [0.1],
     "communication_rounds" : [300],
     "local_epochs" : [1],
+    "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
     "aggregation_mode" : ["flame"],

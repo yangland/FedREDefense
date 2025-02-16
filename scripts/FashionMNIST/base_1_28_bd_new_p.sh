@@ -1,7 +1,7 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='2'
+export CUDA_VISIBLE_DEVICES='3'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
@@ -11,11 +11,12 @@ hyperparameters04='[{
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 
-    "alpha" : [0.1],
+    "alpha" : [1.0],
     "communication_rounds" : [300],
-    "local_epochs" : [1],
-    "batch_size" : [32],
-    "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
+    "local_epochs" : [2],
+    "mali_local_epochs": [5],
+    "batch_size" : [64],
+    "local_optimizer" : [ ["SGD", {"lr": 0.01}]],
     "aggregation_mode" : ["flame"],
     "pretrained" : [null],
     "save_model" : [null],
@@ -28,7 +29,7 @@ hyperparameters04='[{
     "turn" : [0],
     "objective": ["Backdoor"],
     "search_algo": ["MADS"],
-    "critical_layer": ["classification.weight"]
+    "critical_layer": ["classifier.weight"]
     }]'
 
 

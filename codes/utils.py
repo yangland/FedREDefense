@@ -1546,14 +1546,14 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
     return mali_clients, mali_ids
 
 
-def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False, sync=True):
+def mali_client_get_trial_updates(mali_clients, server, local_epochs, mali_train=False, sync=True):
     server_weights = server.parameter_dict[mali_clients[0].model_name]
     if not mali_train:
         # malicious clients train on benign datasets
         for client in mali_clients:
             if sync:
                 client.synchronize_with_server(server)
-            benign_stats = client.compute_weight_benign_update(hp["local_epochs"])
+            benign_stats = client.compute_weight_benign_update(local_epochs)
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
 
         for client in mali_clients:
@@ -1567,7 +1567,7 @@ def mali_client_get_trial_updates(mali_clients, server, hp, mali_train=False, sy
         for client in mali_clients:
             if sync:
                 client.synchronize_with_server(server)
-            mali_stats = client.compute_weight_mali_update(hp["local_epochs"])
+            mali_stats = client.compute_weight_mali_update(local_epochs)
             for name in client.W:
                 client.mali_grad[name] = client.W[name].detach() - server_weights[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
@@ -1661,13 +1661,16 @@ def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     ben_cos_mean, ben_cos_med, ben_cos_std = mean_cosine_similarity(ben_all)
 
     mal_mean = mal_mean / mal_mean.norm(dim=0, keepdim=True)  
-    ben_mean = ben_mean / ben_mean.norm(dim=0, keepdim=True) 
+    ben_mean = ben_mean / ben_mean.norm(dim=0, keepdim=True).to(device)
     mali_ben_mean_cos = torch.nn.functional.cosine_similarity(mal_mean, ben_mean, dim=0).item()
     cos_matrix = pairwise_cosine_similarity(torch.tensor(mal_all), torch.tensor(ben_all))
     min_idx = cos_matrix.argmin(dim=1)
     
-    ben_all_norm = torch.nn.functional.normalize(torch.tensor(ben_all).to(device), p=2, dim=1)
-    ben_cos_to_mean = (ben_mean * ben_all_norm).sum(dim=1).median().item()
+    ben_all_norm = torch.nn.functional.normalize(torch.tensor(ben_all).to(device), dim=1)
+    
+    if ben_mean.dim() == 1:
+        ben_mean = ben_mean.unsqueeze(0) 
+    ben_cos_to_mean = torch.mm(ben_mean, ben_all_norm.T).squeeze().mean().item()
     return cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos, ben_cos_to_mean
 
 

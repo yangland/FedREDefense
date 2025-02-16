@@ -5,7 +5,7 @@ export CUDA_VISIBLE_DEVICES='3'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"resnet8" : 100}],
+    "models" : [{"ConvNet" : 100}],
 
     "attack_rate" :  [0.28],
     "attack_method": ["AOP"],
@@ -29,7 +29,7 @@ hyperparameters04='[{
     "turn" : [0],
     "objective": ["Backdoor"],
     "search_algo": ["MADS"],
-    "critical_layer": ["classification_layer.weight"]
+    "critical_layer": ["classifier.weight"]
     }]'
 
 

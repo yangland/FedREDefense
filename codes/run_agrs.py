@@ -209,7 +209,9 @@ def run_experiment(xp, xp_count, n_experiments):
             
             mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_grad_all = \
                 mali_client_get_trial_updates(
-                    mali_clients, server, hp, mali_train=False, sync=False)
+                    mali_clients, server, hp["local_epochs"], mali_train=False, sync=True)
+            
+            print("mali clients benign training - finished")
             
             if hp["attack_method"] == "UAM":
                 UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_ben_mean,
@@ -217,8 +219,9 @@ def run_experiment(xp, xp_count, n_experiments):
             elif hp["attack_method"] == "AOP":
                 # mali clients get mali grads
                 mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
-                    mali_client_get_trial_updates(mali_clients, server, hp, mali_train=True, sync=True)
+                    mali_client_get_trial_updates(mali_clients, server, hp["mali_local_epochs"], mali_train=True, sync=True)
                 
+                print(f"mali clients mali training, obj: {hp['objective']} - finished")
                 
                 # Analysis the cos between mali adn benign
                 cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos, ben_cos_to_mean = \
