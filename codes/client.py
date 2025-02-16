@@ -807,16 +807,6 @@ class Client_AOP(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        # closest_benign = torch.tensor(self.all_grads[self.min_idx_map[self.id]])
-        # mali grad selection
-        # 1. self.mali_grad - individual grad
-        # 2. self.pool_mali_grad
-        # 3. self.mal_user_grad_mean2 - benign mean
-        
-        # delta between mali-benign mean and mali-mali mean
-        abs_delta = torch.abs(flat_dict(self.mal_user_grad_mean2) - flat_dict(self.mali_mean)).to(device)
-        # print("abs_delta", abs_delta, torch.count_nonzero(abs_delta))
-
         # benign_g = self.benign_grad
         # mali_g = self.mali_grad
         benign_g = self.mal_user_grad_mean2

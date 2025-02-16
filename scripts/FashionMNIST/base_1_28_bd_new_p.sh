@@ -30,7 +30,7 @@ hyperparameters04='[{
     "objective": ["Backdoor"],
     "search_algo": ["MADS"],
     "critical_layer": ["classifier.weight"],
-    "sync_mali_mali_train": ["False"]
+    "sync_mali_mali_train": ["True"]
     }]'
 
 

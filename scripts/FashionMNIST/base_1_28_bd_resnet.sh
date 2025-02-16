@@ -9,7 +9,7 @@ hyperparameters04='[{
 
     "attack_rate" :  [0.28],
     "attack_method": ["AOP"],
-    "participation_rate" : [1],
+    "participation_rate" : [0.1],
 
     "alpha" : [1.0],
     "communication_rounds" : [300],

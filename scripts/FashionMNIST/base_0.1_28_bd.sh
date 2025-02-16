@@ -1,7 +1,7 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='3'
+export CUDA_VISIBLE_DEVICES='5'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
@@ -30,7 +30,7 @@ hyperparameters04='[{
     "objective": ["Backdoor"],
     "search_algo": ["MADS"],
     "critical_layer": ["classifier.weight"],
-    "sync_mali_mali_train": ["False"]
+    "sync_mali_mali_train": ["True"]
     }]'
 
 

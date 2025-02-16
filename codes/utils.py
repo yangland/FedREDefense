@@ -545,12 +545,14 @@ def craft_critical_layer(ben_g=None, mali_g=None, budget=None, measure="cos", cr
     org_dist = grad_dist(ben_g, mali_g, measure)
     k = 100
     
+    # return mali if mali_g within budget
     # if org_dist < budget :
+    #     print(f"{measure} org dist: {org_dist}, budget: {budget}")
     #     return mali_g, k
     
     # attack uses only the classification layer, others stay the same
     crafted_g = deepcopy(ben_g)
-    crafted_g[critical_layer] = mali_g[critical_layer] 
+    crafted_g[critical_layer] = mali_g[critical_layer]
     
     crafted_dist = grad_dist(ben_g, crafted_g, measure)
     
@@ -560,6 +562,8 @@ def craft_critical_layer(ben_g=None, mali_g=None, budget=None, measure="cos", cr
     
     if budget==None or crafted_dist < budget :
         print("crafted gradient within the budget")
+        crafted_g, k = critical_layer_boost(ben_g, mali_g, critical_layer, budget, discount=0.75)
+        
         return crafted_g, k
     else:
         # search a crafted model that within the given budget
@@ -567,6 +571,28 @@ def craft_critical_layer(ben_g=None, mali_g=None, budget=None, measure="cos", cr
             crafted_g, k = critical_layer_budget_cos(ben_g, mali_g, critical_layer, budget)
         return crafted_g, k
 
+def critical_layer_boost(ben_g, mali_g, critical_layer, budget, discount=1.0):
+    # randomly select k% of the critical layer 
+    def cosine_similarity(x, y):
+        return torch.nn.functional.cosine_similarity(x.flatten(), y.flatten(), dim=0)
+    
+    crafted_g = deepcopy(ben_g)
+    left, right = 0.0, 20
+    best_k = right
+    while right - left > 1e-2:
+        mid = (left + right) / 2
+        crafted_g[critical_layer] = mali_g[critical_layer] * mid
+        cos_sim = cosine_similarity(torch.tensor(flat_dict(ben_g)), torch.tensor(flat_dict(crafted_g)))
+        
+        print(f"left: {left}, right: {right}, mid: {mid}, cos_dist: {1 - cos_sim}")
+
+        if 1 - cos_sim > budget * discount:
+            best_k = mid  # Store valid t
+            right = mid  # Try a smaller t
+        else:
+            left = mid  # Increase t
+    
+    return crafted_g, best_k*100
 
 def critical_layer_budget_cos(ben_g, mali_g, critical_layer, budget):
     # randomly select k% of the critical layer 
@@ -575,19 +601,22 @@ def critical_layer_budget_cos(ben_g, mali_g, critical_layer, budget):
     
     left, right = 0.0, 1.0
     best_k = right
-    while right - left > 1e-6:
+    while right - left > 1e-3:
         mid = (left + right) / 2
-        print("left,right, mid", left, right, mid)
-        crafted_g = merge_model_layer_random(ben_g, mali_g, critical_layer, mid)
+        print("left, right, mid", left, right, mid)
+        # crafted_g = merge_model_layer_random(ben_g, mali_g, critical_layer, mid)
+        crafted_g = merge_model_layer_w_avg(ben_g, mali_g, critical_layer, mid)
         cos_sim = cosine_similarity(torch.tensor(flat_dict(ben_g)), torch.tensor(flat_dict(crafted_g)))
-        print("cos dist", 1 - cos_sim)
+        
+        print(f"left: {left}, right: {right}, mid: {mid}, cos_dist: {1 - cos_sim}")
+
         if 1 - cos_sim > budget:
             best_k = mid  # Store valid t
             right = mid  # Try a smaller t
         else:
             left = mid  # Increase t
     
-    crafted_g = merge_model_layer_random(ben_g, mali_g, critical_layer, best_k)
+    # crafted_g = merge_model_layer_random(ben_g, mali_g, critical_layer, best_k)
     
     return crafted_g, best_k*100
 
@@ -634,6 +663,40 @@ def merge_model_layer_random(a_state_dict: dict, b_state_dict: dict, layer_name:
     return c_state_dict
 
 
+def merge_model_layer_w_avg(a_state_dict: dict, b_state_dict: dict, layer_name: str, k: float) -> dict:
+    """
+    Creates a new model c, which is initialized from a_state_dict, except that k% of the parameters
+    in the specified layer are taken from b_state_dict.
+
+    Args:
+        a_state_dict (dict): State dictionary of the first model.
+        b_state_dict (dict): State dictionary of the second model (same structure as a_state_dict).
+        layer_name (str): Name of the layer to partially merge (e.g., "classifier.weight").
+        k (float): Percentage of elements to take from b (0 < k <= 1).
+
+    Returns:
+        dict: State dictionary of the new model c with mixed parameters.
+    """
+    c_state_dict = deepcopy(a_state_dict)  # Clone a's state dict
+    
+    # Get the parameters of the specified layer from a and b
+    a_params = a_state_dict[layer_name]
+    b_params = b_state_dict[layer_name]
+    
+    
+    # Flatten tensors for easy indexing
+    a_params_flat = a_params.clone().view(-1)
+    b_params_flat = b_params.clone().view(-1)
+    c_params_flat = a_params_flat.clone()
+    
+    c_params_flat = k * a_params_flat + (1 - k) * b_params_flat
+    
+    # Reshape and update c_state_dict
+    c_state_dict[layer_name] = c_params_flat.view(a_params.shape)
+    
+    return c_state_dict
+
+
 
 def grad_dist(a, b, measure):
     # a, b as 1D tensor
@@ -666,7 +729,7 @@ def weighted_avg_budget_cos(a: torch.Tensor, b: torch.Tensor, budget: float):
     
     left, right = 0.0, 1.0
     best_t = right
-    while right - left > 1e-6:
+    while right - left > 1e-3:
         # print("left,right", left, right)
         mid = (left + right) / 2
         c = mid * a + (1 - mid) * b

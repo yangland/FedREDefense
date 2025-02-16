@@ -5,9 +5,9 @@ export CUDA_VISIBLE_DEVICES='5'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"ConvNet" : 100}],
+    "models" : [{"resnet8" : 10}],
 
-    "attack_rate" :  [0.28],
+    "attack_rate" :  [0.3],
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 
@@ -29,7 +29,7 @@ hyperparameters04='[{
     "turn" : [0],
     "objective": ["targeted_label_flip"],
     "search_algo": ["MADS"],
-    "critical_layer": ["classifier.weight"],
+    "critical_layer": ["classification_layer.weight"],
     "sync_mali_mali_train": ["True"]
     }]'
 

@@ -1,20 +1,20 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='3'
+export CUDA_VISIBLE_DEVICES='6'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"resnet8" : 100}],
+    "models" : [{"ConvNet" : 20}],
 
-    "attack_rate" :  [0.28],
+    "attack_rate" :  [0.3],
     "attack_method": ["AOP"],
     "participation_rate" : [1],
 
-    "alpha" : [1.0],
+    "alpha" : [0.1],
     "communication_rounds" : [300],
     "local_epochs" : [1],
-    "mali_local_epochs": [5],
+    "mali_local_epochs": [1],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
     "aggregation_mode" : ["flame"],
@@ -27,9 +27,9 @@ hyperparameters04='[{
     "right_ben" : [0],
     "noise" : [0.001],
     "turn" : [0],
-    "objective": ["targeted_label_flip"],
+    "objective": ["Backdoor"],
     "search_algo": ["MADS"],
-    "critical_layer": ["classification_layer.weight"],
+    "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"]
     }]'
 
