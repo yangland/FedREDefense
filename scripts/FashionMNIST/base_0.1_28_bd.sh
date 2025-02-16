@@ -14,7 +14,7 @@ hyperparameters04='[{
     "alpha" : [0.1],
     "communication_rounds" : [300],
     "local_epochs" : [1],
-    "mali_local_epochs": [5],
+    "mali_local_epochs": [1],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
     "aggregation_mode" : ["flame"],
@@ -29,7 +29,8 @@ hyperparameters04='[{
     "turn" : [0],
     "objective": ["Backdoor"],
     "search_algo": ["MADS"],
-    "critical_layer": ["classifier.weight"]
+    "critical_layer": ["classifier.weight"],
+    "sync_mali_mali_train": ["False"]
     }]'
 
 

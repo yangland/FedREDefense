@@ -219,7 +219,8 @@ def run_experiment(xp, xp_count, n_experiments):
             elif hp["attack_method"] == "AOP":
                 # mali clients get mali grads
                 mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
-                    mali_client_get_trial_updates(mali_clients, server, hp["mali_local_epochs"], mali_train=True, sync=True)
+                    mali_client_get_trial_updates(mali_clients, server, hp["mali_local_epochs"], 
+                                                  mali_train=True, sync=hp["sync_mali_mali_train"].lower()=="true")
                 
                 print(f"mali clients mali training, obj: {hp['objective']} - finished")
                 
@@ -289,18 +290,18 @@ def run_experiment(xp, xp_count, n_experiments):
 
             if hp["attack_method"] in ["DBA", "Scaling", "Backdoor", "targeted_label_flip", "UAM", "AOP"]:
                 if hp["attack_method"] in ["DBA", "Scaling", "Backdoor"]:
-                    att_result = server.evaluate_attack().items()
+                    att_result = server.evaluate_backdoor_attack().items()
                 elif hp["attack_method"] in ["targeted_label_flip"]:
                     att_result = server.evaluate_tr_lf_attack().items()
                 elif hp["attack_method"] in ["UAM", "AOP"]:
                     if hp["objective"] == "targeted_label_flip":
                         att_result = server.evaluate_tr_lf_attack().items()
                     elif hp["objective"] == "label_flip":
-                        att_result = {}
+                        att_result = server.evaluate_lp_attack(class_num=10).items()
                     elif hp["objective"] == "Backdoor":
-                        att_result = server.evaluate_attack().items()
+                        att_result = server.evaluate_backdoor_attack().items()
                     else:
-                        raise Exception("Unknown UAM_mode")
+                        raise Exception("Unknown objective")
                 xp.log({"server_att_{}_a_{}".format(                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
                     key, hp["alpha"]): value for key, value in att_result})
                 logger.info({"server_att_{}_a_{}".format(

@@ -1069,6 +1069,20 @@ def eval_op_ensemble_tr_lf_attack(models, loader):
     return {"accuracy" : correct/samples}
 
 
+def eval_op_ensemble_lp_attack(models, loader, class_num):
+    for model in models: 
+        model.eval()
+    samples, correct = 0, 0
+    with torch.no_grad():
+        for i, (x, y) in enumerate(loader):
+            x, y = x.to(device), y.to(device)
+            y_ = torch.mean(torch.stack([model(x) for model in models], dim=0), dim=0)
+            _, predicted = torch.max(y_.detach(), 1)
+            correct += ((predicted == (y + 1) % class_num).sum().item())
+            samples += y.shape[0]
+    return {"accuracy": correct / samples}
+
+
 def reduce_average(target, sources):
     # import pdb; pdb.set_trace()
     for name in target:
@@ -1547,6 +1561,7 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
 
 
 def mali_client_get_trial_updates(mali_clients, server, local_epochs, mali_train=False, sync=True):
+    # print("sync", sync, type(sync))
     server_weights = server.parameter_dict[mali_clients[0].model_name]
     if not mali_train:
         # malicious clients train on benign datasets

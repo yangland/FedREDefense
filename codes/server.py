@@ -118,8 +118,11 @@ class Server(Device):
     def evaluate_ensemble_with_preds(self):
         return eval_op_ensemble_with_preds(self.models, self.loader)
 
-    def evaluate_attack(self, loader=None):
+    def evaluate_backdoor_attack(self, loader=None):
         return eval_op_ensemble_attack(self.models, self.loader if not loader else loader)
+    
+    def evaluate_lp_attack(self, loader=None, class_num=None):
+        return  eval_op_ensemble_lp_attack(self.models, self.loader if not loader else loader, class_num)
 
     def evaluate_tr_lf_attack(self, loader=None):
         return eval_op_ensemble_tr_lf_attack(self.models, self.loader if not loader else loader)
