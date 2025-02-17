@@ -561,8 +561,8 @@ def craft_critical_layer(ben_g=None, mali_g=None, budget=None, measure="cos", cr
     # k represent % of the mali can be kept
     
     if budget==None or crafted_dist < budget :
-        print("crafted gradient within the budget")
-        crafted_g, k = critical_layer_boost(ben_g, mali_g, critical_layer, budget, discount=0.75)
+        # print("crafted gradient within the budget")
+        # crafted_g, k = critical_layer_boost(ben_g, mali_g, critical_layer, budget, discount=0.75)
         
         return crafted_g, k
     else:
