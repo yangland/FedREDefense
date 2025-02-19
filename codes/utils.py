@@ -18,6 +18,7 @@ import hdbscan
 import sklearn.metrics.pairwise as smp
 import math
 import logging
+from sklearn.metrics import confusion_matrix
 from copy import deepcopy
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 logger = logging.getLogger("logger")
@@ -1005,13 +1006,46 @@ def eval_op_ensemble(models, test_loader):
             correct += (predicted == y).sum().item()
     test_acc = correct / samples
 
-    # for model in models:
-    #     model.eval()
-
-    # samples, correct = 0, 0
-
 
     return {"test_accuracy": test_acc}
+
+
+def per_label_accuracy(y_true, y_pred, class_num):
+    cm = confusion_matrix(y_true, y_pred, labels=np.arange(class_num))
+    per_class_accuracy = cm.diagonal() / cm.sum(axis=1)
+    return per_class_accuracy
+
+def eval_op_ensemble_per_class(models, test_loader, class_num):
+    # Initialize lists to store all true labels and predictions
+    all_true_labels = []
+    all_predictions = []
+    
+    # Loop over the test_loader to get batches
+    for data, target in test_loader:
+        all_true_labels.append(target.numpy())  # Assuming target is a tensor; convert to numpy
+        predictions_ensemble = np.zeros((len(models), data.shape[0]))  # Shape: (num_models, batch_size)
+        
+        # Get predictions from each model in the ensemble
+        for i, model in enumerate(models):
+            model.eval()  # Set model to evaluation mode
+            with torch.no_grad():  # No need to track gradients during inference
+                outputs = model(data)
+                _, predicted = torch.max(outputs, 1)  # Get the predicted class labels
+                predictions_ensemble[i] = predicted.numpy()
+        
+        # Majority vote for final prediction
+        final_predictions = np.apply_along_axis(lambda x: np.bincount(x.astype(int)).argmax(), axis=0, arr=predictions_ensemble)
+        all_predictions.append(final_predictions)
+    
+    # Flatten the lists to get complete arrays
+    all_true_labels = np.concatenate(all_true_labels)
+    all_predictions = np.concatenate(all_predictions)
+    
+    # Calculate per-label accuracy
+    per_class_accuracy = per_label_accuracy(all_true_labels, all_predictions, class_num)
+    
+    return per_class_accuracy
+
 
 
 def eval_op_ensemble_attack_with_preds(models, loader):
@@ -1187,10 +1221,14 @@ def flat_grad(target, sources):
     user_flatten_grad = torch.stack(user_flatten_grad)
     return user_flatten_grad
 
-def flat_dict(grad_dict):
+def flat_dict(grad_dict, layer_list=None):
     user_flatten_grad = []
     for name, grad in grad_dict.items():
-        user_flatten_grad.append(torch.flatten(grad.detach()))
+        if layer_list == None:
+            user_flatten_grad.append(torch.flatten(grad.detach()))
+        else:
+            if name in layer_list:
+                user_flatten_grad.append(torch.flatten(grad.detach()))
     user_flatten_grad = torch.cat(user_flatten_grad)
     return user_flatten_grad
 
