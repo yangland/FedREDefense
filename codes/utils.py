@@ -990,7 +990,6 @@ def get_labels_att(test_loader):
 
 def eval_op_ensemble(models, test_loader):
     for model in models:
-        # model.train()
         model.eval()
 
     samples, correct = 0, 0
@@ -1006,10 +1005,10 @@ def eval_op_ensemble(models, test_loader):
             correct += (predicted == y).sum().item()
     test_acc = correct / samples
 
-    for model in models:
-        model.eval()
+    # for model in models:
+    #     model.eval()
 
-    samples, correct = 0, 0
+    # samples, correct = 0, 0
 
 
     return {"test_accuracy": test_acc}
