@@ -743,7 +743,7 @@ def weighted_avg_budget_cos(a: torch.Tensor, b: torch.Tensor, budget: float):
             left = mid  # Increase t
     
     c = best_t * a + (1 - best_t) * b
-    return c, best_t*100
+    return c, best_t*100, 1 - cos_sim
 
 
 
@@ -870,8 +870,10 @@ def restore_dict_grad_dict(grad_dict, server_w, model_dict):
 
     for name, param in model_dict.items():
         if name not in missing_keys:
+            print("name", name)
+            print(grad_dict[name].shape, server_w[name].shape)
 
-            restored_w[name] = grad_dict[name] + + server_w[name]                           
+            restored_w[name] = grad_dict[name] + server_w[name]                           
 
         else:
             restored_w[name] = model_dict[name]
