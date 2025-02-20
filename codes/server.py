@@ -260,7 +260,7 @@ class Server(Device):
 # add a special Server class malicious command center
 class MaliCC(Device):
     def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset='cifar10',
-                 val_loader=None, mali_ids=None, search_algo="MADS", obj=None):
+                 val_loader=None, mali_ids=None, search_algo="MADS", obj=None, scheduler=None):
         super().__init__(loader)
         print(f"Malicous command center {dataset}")
         # self.parameter_dict = {model_name : {key : value for key, value in model.named_parameters()} for model_name, model in self.model_dict.items()}
@@ -271,10 +271,12 @@ class MaliCC(Device):
         self.W = {key: value for key, value in self.model.named_parameters()}
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.95)
         self.obj = obj
         self.num_classes = num_classes
 
         self.mali_ids = mali_ids
+        self.data_multiplier = len(mali_ids)
         self.x = None
         self.history = []
         self.search_algo = search_algo
@@ -310,7 +312,7 @@ class MaliCC(Device):
             self.model, self.loader if not loader else loader, self.optimizer, epochs)
         return train_stats
 
-    def compute_weight_mali_update(self, epochs=1, loader=None):
+    def compute_weight_mali_update(self, model0, model1, epochs=1, loader=None, beta=0.5, budget=0.1):
         if self.obj == "label_flip":
             train_stats = train_op_flip(
                 self.model, self.loader if not loader else loader, self.optimizer, epochs, class_num=self.num_classes)
@@ -320,6 +322,9 @@ class MaliCC(Device):
         elif self.obj == "Backdoor":
             train_stats = train_op_backdoor(
                 self.model, self.loader if not loader else loader, self.optimizer, epochs)
+        elif self.obj == "rev_cos":
+            train_stats = train_rev_w_cos(
+                self.model, loader, self.optimizer, self.scheduler, epochs, model0, model1, beta, budget)
         else:
             raise Exception("Unknown mali objetive")
         return train_stats

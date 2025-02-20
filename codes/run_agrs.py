@@ -105,8 +105,10 @@ def run_experiment(xp, xp_count, n_experiments):
     np.random.seed(hp["random_seed"])
     torch.manual_seed(hp["random_seed"])
     train_data = train_data_all
-    client_loaders, test_loader, client_data_subsets = data.get_loaders(train_data, test_data, n_clients=len(model_names),
-                                                                        alpha=hp["alpha"], batch_size=hp["batch_size"], n_data=None, num_workers=4, seed=hp["random_seed"])
+    client_loaders, test_loader, client_data_subsets = \
+        data.get_loaders(train_data, test_data, n_clients=len(model_names),
+                         alpha=hp["alpha"], batch_size=hp["batch_size"], 
+                         n_data=None, num_workers=4, seed=hp["random_seed"])
 
     # initialize server and clients
     server = Server(np.unique(model_names), test_loader,
@@ -149,17 +151,20 @@ def run_experiment(xp, xp_count, n_experiments):
                 elif hp["attack_method"] == "DBA":
                     clients.append(Client_DBA(model_name, optimizer_fn, loader,
                                    idnum=i, num_classes=num_classes, dataset=hp['dataset']))
+                elif hp["attack_method"] == "UAM":
+                    clients.append(Client_UAM(model_name, optimizer_fn, loader,
+                                   idnum=i, num_classes=num_classes, dataset=hp['dataset']))                    
                 elif hp["attack_method"] == "AOP":
                     clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i,
                                    num_classes=num_classes, dataset=hp['dataset'], obj=hp['objective']))
-                elif hp["attack_method"] == "UAM":
-                    clients.append(Client_UAM(model_name, optimizer_fn, loader,
-                                   idnum=i, num_classes=num_classes, dataset=hp['dataset']))
+                elif hp["attack_method"] == "untargeted_cos":
+                    clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i,
+                                   num_classes=num_classes, dataset=hp['dataset'], obj=hp['objective']))
                 else:
                     import pdb
                     pdb.set_trace()
                 
-                if hp["attack_method"] in ["AOP", "UAM"]:
+                if hp["attack_method"] in ["AOP", "UAM", "untargeted_cos"]:
                     # initialize the UAM malicious group's command center
                     mali_ids_all = list(range(
                         math.ceil((1 - hp["attack_rate"])*len(client_loaders)), len(client_loaders)))
@@ -169,15 +174,14 @@ def run_experiment(xp, xp_count, n_experiments):
                         pooled_mali_ds, batch_size=hp["batch_size"], shuffle=True, num_workers=4)
                     
                     malicc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes,
-                                    dataset=hp['dataset'], search_algo=hp["search_algo"], obj=hp["objective"])
+                                    dataset=hp['dataset'], mali_ids=mali_ids_all,
+                                    search_algo=hp["search_algo"], obj=hp["objective"])
                     
                     if hp["attack_method"] == "UAM":
                         # The first attack action to try
                         x0 = [0.5, 0.5, 1]
                         malicc.search_initial(x0)
-                    elif hp["attack_method"] == "AOP":
-                        # get the first feedback
-                        pass
+
 
     print(clients[0].model)
 
@@ -202,7 +206,7 @@ def run_experiment(xp, xp_count, n_experiments):
         xp.log({"participating_clients": np.array(
             [c.id for c in participating_clients])})
         # For attack methods that require benign update from clients to construct the malicious upates
-        if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP"]:
+        if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP", "untargeted_cos"]:
             # mali clients get benign grads
             mali_clients, mali_ids = get_mali_clients_this_round(
                 participating_clients, client_loaders, hp["attack_rate"])
@@ -239,15 +243,29 @@ def run_experiment(xp, xp_count, n_experiments):
                     client.mali_mean = mal_user_grad_mal_mean
                     client.ben_cos_to_mean = ben_cos_to_mean
                     client.critical_layer = hp["critical_layer"]
-
+                    client.uniformed_att = hp["uniformed_att"].lower()=="true"
                     
                 xp.log({"mali_ben_cos_mat": cos_matrix.detach().cpu().numpy()}, printout=False)
                 xp.log({"mali-ben_map": min_idx})
                 xp.log({"ben_cos_mean": ben_cos_mean})
                 xp.log({"mean_cos_mali_ben": mali_ben_mean_cos})                
-
                 logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}")
-
+                
+            elif hp["attack_method"] == "untargeted_cos":
+                malicc.synchronize_with_server(server)
+                # perform the untargeted attack optimization on malicc, and distributed to all clients
+                ben_cos_mean, ben_cos_med, ben_cos_std = mean_cosine_similarity(ben_grad_all)
+                adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
+                adhoc_model = adhoc_model_fn().to(device)
+                
+                restored_crafted = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.model.state_dict(), malicc.model.state_dict())
+                adhoc_model.load_state_dict(restored_crafted)
+                malicc.compute_weight_mali_update(malicc.model, adhoc_model, epochs=1, 
+                                                  loader=malicc.loader, beta=0.5, budget=ben_cos_med)
+                print(f"crafted with malicc, wt budget {ben_cos_med}")
+                
+                for client in mali_clients:
+                    client.model.load_state(malicc.model.state_dict())
 
         # Both benign and malicous clients compute weight update
         for client in participating_clients:
@@ -296,7 +314,7 @@ def run_experiment(xp, xp_count, n_experiments):
                 elif hp["attack_method"] in ["UAM", "AOP"]:
                     if hp["objective"] == "targeted_label_flip":
                         att_result = server.evaluate_tr_lf_attack().items()
-                    elif hp["objective"] == "label_flip":
+                    elif hp["objective"] in ["label_flip", "rev_cos"]:
                         att_result = server.evaluate_lp_attack(class_num=10).items()
                     elif hp["objective"] == "Backdoor":
                         att_result = server.evaluate_backdoor_attack().items()

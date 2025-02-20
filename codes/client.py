@@ -655,8 +655,8 @@ class Client_Scaling(Device):
         self.id = idnum
         print(f"dataset client {dataset}")
         self.model_name = model_name
-        self.model_fn = partial(model_utils.get_model(self.model_name)[
-                                0], num_classes=num_classes, dataset=dataset)
+        self.model_fn = partial(model_utils.get_model(self.model_name)[0],
+                                num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
@@ -781,6 +781,7 @@ class Client_AOP(Device):
         self.mali_mean = None
         self.server_w = None
         self.critical_layer = None
+        self.uniformed_att = False
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -802,6 +803,10 @@ class Client_AOP(Device):
         elif self.obj == "Backdoor":
             train_stats = train_op_backdoor(
                 self.model, self.loader if not loader else loader, self.optimizer, epochs)
+        elif self.obj == "rev_cos":
+            # uniformed attack, clients models already updated
+            train_stats = {}
+            pass
         else:
             raise Exception("Unknown mali objetive")
         return train_stats

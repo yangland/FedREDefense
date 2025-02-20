@@ -408,6 +408,7 @@ def train_op_dba(model, loader, optimizer, epochs, cid, class_num=10):
             optimizer.step()
     return {"loss" : running_loss / samples}
 
+
 def train_op_flip(model, loader, optimizer, epochs, class_num=10):
     model.train()
 
@@ -1804,3 +1805,78 @@ def mean_cosine_similarity(A):
     cos_sims = torch.tensor(cos_sims)
     # print("cos_sims", cos_sims)
     return cos_sims.mean().item(), torch.median(cos_sims).item(), torch.std(cos_sims, dim=0).item()
+
+
+def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
+    model.train()
+    # model.parameters need to use 
+    flat_grad_model0 = flat_dict(filter_trainable_state_dict(model0))
+    flat_grad_model1 = flat_dict(filter_trainable_state_dict(model1))
+    grad_ben = (flat_grad_model1 - flat_grad_model0).to(device)
+    
+    losses = []
+    running_loss, samples = 0.0, 0
+    # check_point = filter_trainable_state_dict(model0).detach().clone()
+    for ep in range(epochs):
+        for it, (x, y) in enumerate(loader):
+            if it % 2 == 0:
+                losses.append(round(eval_epoch(model, loader), 2))
+            x, y = x.to(device), y.to(device)
+            optimizer.zero_grad()
+            loss_ce = nn.CrossEntropyLoss()(model(x), y)
+            # in the untraining reverse the sign of loss
+            loss_ce = - loss_ce
+            running_loss += loss_ce.item() * y.shape[0]
+            samples += y.shape[0]
+            
+            # add cos loss 
+            w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
+            grad_mail = w - flat_grad_model0
+            target = torch.ones(len(w)).to(device)
+            loss_cos = nn.CosineEmbeddingLoss()(grad_ben.unsqueeze(0), grad_mail.unsqueeze(0), target)
+            loss_obj = (1-beta) * loss_ce + beta * loss_cos
+            loss_obj.backward()
+            optimizer.step()
+            scheduler.step()
+            if it % 5 == 0:
+                print(f"ep{ep}, loss_cs: {loss_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
+        
+        # break
+        cos_d = cos_dist(grad_ben, grad_mail)
+        print("eval losses", losses)
+        print(f"cos_d: {cos_d}, budget: {budget}")
+        
+        if cos_d > budget:
+            print(f"budget exceeded, finish training early, ep = {ep}")
+            craft_g, k, cos_d2 = weighted_avg_budget_cos(a=grad_mail, 
+                                                        b=grad_ben, 
+                                                        budget=budget)
+            print(f"crafted cos: {cos_d2}")
+            restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
+            model.load_state_dict(restored_crafted)
+            break
+        # else:
+            # check_point = model.state_dict().detach().clone()
+        
+
+    return {"loss": running_loss / samples}
+
+
+def cos_dist(w1, w2):
+    """Compute cosine similarity between two flattened weight tensors"""
+    w1_flat, w2_flat = torch.cat([p.view(-1) for p in w1]), torch.cat([p.view(-1) for p in w2])
+    return 1 - torch.dot(w1_flat, w2_flat) / (torch.norm(w1_flat) * torch.norm(w2_flat))
+
+
+def filter_trainable_state_dict(model):
+    """
+    Filters model.state_dict() to retain only parameters that are in model.parameters().
+
+    Args:
+        model (torch.nn.Module): The model whose state_dict needs filtering.
+
+    Returns:
+        dict: Filtered state dictionary containing only trainable parameters.
+    """
+    param_names = {name for name, _ in model.named_parameters()}
+    return {k: v for k, v in model.state_dict().items() if k in param_names}
