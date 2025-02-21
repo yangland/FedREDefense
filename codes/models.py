@@ -345,7 +345,7 @@ class ConvNet(nn.Module):
         channel =  channel_dict.get(dataset)
         self.features, shape_feat = self._make_layers(channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size)
         num_feat = shape_feat[0]*shape_feat[1]*shape_feat[2]
-        print(f"num feat {num_feat}")
+        # print(f"num feat {num_feat}")
         self.classifier = nn.Linear(num_feat, num_classes)
 
     def forward(self, x):

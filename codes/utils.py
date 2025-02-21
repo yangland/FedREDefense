@@ -871,8 +871,7 @@ def restore_dict_grad_dict(grad_dict, server_w, model_dict):
 
     for name, param in model_dict.items():
         if name not in missing_keys:
-            # print("name", name)
-            print(grad_dict[name].shape, server_w[name].shape)
+            # print(grad_dict[name].shape, server_w[name].shape)
 
             restored_w[name] = grad_dict[name] + server_w[name]                           
 
@@ -1816,7 +1815,8 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     
     losses = []
     running_loss, samples = 0.0, 0
-    # check_point = filter_trainable_state_dict(model0).detach().clone()
+    print(f"data length {len(loader) * loader.batch_size}: batches {len(loader)}, batch_size {loader.batch_size}")
+    
     for ep in range(epochs):
         for it, (x, y) in enumerate(loader):
             if it % 2 == 0:
@@ -1824,6 +1824,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
             loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
+
             # in the untraining reverse the sign of loss
             loss_ce = - loss_ce
             running_loss += loss_ce.item() * y.shape[0]

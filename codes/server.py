@@ -329,10 +329,12 @@ class MaliCC(Device):
         feedback = None
         if self.obj == "targeted_label_flip":
             feedback = eval_op_ensemble_tr_lf_attack([self.model], self.loader if not loader else loader)
-        elif self.obj in ["label_flip", "rev_cos"]:
+        elif self.obj == "label_flip":
             feedback = eval_op_ensemble_lp_attack([self.model], self.loader if not loader else loader, class_num)
         elif self.obj == "Backdoor":
             feedback = eval_op_ensemble_attack([self.model], self.loader if not loader else loader)
+        elif self.obj == "rev_cos":
+            feedback = eval_op_ensemble([self.model], self.loader if not loader else loader)
         else:
             print("objective unknown")
         return feedback
