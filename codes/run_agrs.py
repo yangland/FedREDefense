@@ -158,8 +158,8 @@ def run_experiment(xp, xp_count, n_experiments):
                     clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i,
                                    num_classes=num_classes, dataset=hp['dataset'], obj=hp['objective']))
                 elif hp["attack_method"] == "untargeted_cos":
-                    clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i,
-                                   num_classes=num_classes, dataset=hp['dataset'], obj=hp['objective']))
+                    clients.append(Client_UtCos(model_name, optimizer_fn, loader, idnum=i,
+                                   num_classes=num_classes, dataset=hp['dataset']))
                 else:
                     import pdb
                     pdb.set_trace()
@@ -174,7 +174,7 @@ def run_experiment(xp, xp_count, n_experiments):
                         pooled_mali_ds, batch_size=hp["batch_size"], shuffle=True, num_workers=4)
                     
                     malicc = MaliCC(np.unique(model_names)[0], pooled_mali_dl, optimizer_fn, num_classes=num_classes,
-                                    dataset=hp['dataset'], mali_ids=mali_ids_all,
+                                    dataset=hp['dataset'], mali_ids=mali_ids_all, data = pooled_mali_ds,
                                     search_algo=hp["search_algo"], obj=hp["objective"])
                     
                     if hp["attack_method"] == "UAM":
@@ -257,15 +257,31 @@ def run_experiment(xp, xp_count, n_experiments):
                 ben_cos_mean, ben_cos_med, ben_cos_std = mean_cosine_similarity(ben_grad_all)
                 adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
                 adhoc_model = adhoc_model_fn().to(device)
+                restored_crafted = restore_dict_grad_dict(mal_user_grad_ben_mean, 
+                                                          malicc.model.state_dict(), 
+                                                          malicc.model.state_dict())
                 
-                restored_crafted = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.model.state_dict(), malicc.model.state_dict())
                 adhoc_model.load_state_dict(restored_crafted)
-                malicc.compute_weight_mali_update(malicc.model, adhoc_model, epochs=1, 
-                                                  loader=malicc.loader, beta=0.5, budget=ben_cos_med)
-                print(f"crafted with malicc, wt budget {ben_cos_med}")
+                
+                malicc.sub_loader = malicc.get_sub_dataloader(mult=min(3, malicc.data_multiplier))
+                malicc.reset_lr(new_lr=0.05)
+                
+                print("malicc.optimizer", malicc.optimizer)
+                
+                malicc.compute_weight_mali_update(model0=malicc.model, 
+                                                  model1=adhoc_model, 
+                                                  epochs=1, 
+                                                  loader=malicc.sub_loader, 
+                                                  beta=0.5, 
+                                                  budget=1-ben_cos_med)
+                
+                # evaluate the crafted malicious client
+                acc_results = malicc.feedback_on_attack(class_num=10).items()
+                
+                print(f"crafted with malicc, wt budget {1-ben_cos_med}, acc: {acc_results}")
                 
                 for client in mali_clients:
-                    client.model.load_state(malicc.model.state_dict())
+                    client.model.load_state_dict(malicc.model.state_dict())
 
         # Both benign and malicous clients compute weight update
         for client in participating_clients:

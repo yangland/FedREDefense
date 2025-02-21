@@ -5,6 +5,7 @@ from client import Device
 import hdbscan
 from utils import kd_loss, DiffAugment
 import sklearn.metrics.pairwise as smp
+from torch.utils.data import DataLoader, SubsetRandomSampler
 from MADS import MADS
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -260,7 +261,7 @@ class Server(Device):
 # add a special Server class malicious command center
 class MaliCC(Device):
     def __init__(self, model_name, loader, optimizer_fn, num_classes=10, dataset='cifar10',
-                 val_loader=None, mali_ids=None, search_algo="MADS", obj=None, scheduler=None):
+                 data=None, mali_ids=None, search_algo="MADS", obj=None):
         super().__init__(loader)
         print(f"Malicous command center {dataset}")
         # self.parameter_dict = {model_name : {key : value for key, value in model.named_parameters()} for model_name, model in self.model_dict.items()}
@@ -281,7 +282,31 @@ class MaliCC(Device):
         self.history = []
         self.search_algo = search_algo
         self.dsm = None
+        self.sub_loader = None
+        self.data = data
 
+    def reset_lr(self, new_lr):
+        self.scheduler._step_count = 0
+        self.scheduler.last_epoch = -1  
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = new_lr  # Set to your desired value
+    
+
+    def get_sub_dataloader(self, mult):
+        # Assuming you have a dataset
+        dataset_size = len(self.data)
+        indices = list(range(dataset_size))
+
+        # Shuffle and select one client's data size * mult
+        np.random.shuffle(indices)
+        split = int(dataset_size / self.data_multiplier * mult)
+        train_indices = indices[:split]
+
+        # Use SubsetRandomSampler
+        train_sampler = SubsetRandomSampler(train_indices)
+        sub_loader = DataLoader(self.data, batch_size=32, sampler=train_sampler)
+        return sub_loader
+    
     def search_initial(self, x0, bounds=[[0, 1], [0, 180], [0, 3]], detlta0=0.1, delta_min=1e-5):
         self.x = x0
         if self.search_algo == "MADS":
@@ -289,18 +314,27 @@ class MaliCC(Device):
                 bounds), delta0=detlta0, delta_min=delta_min)
             print("search_initial search_algo")
 
-    def binary_search(self, previous, feedback):
-        pass
-
 
     def get_server_feedback(self, server_models, loader=None):
         feedback = None
-        if self.objective == "targeted_label_flip":
+        if self.obj == "targeted_label_flip":
             feedback = eval_op_ensemble_tr_lf_attack(server_models, self.loader if not loader else loader)
-        elif self.objective == "label_flip":
+        elif self.obj == ["label_flip", "rev_cos"]:
             feedback = eval_op_ensemble(server_models, self.loader if not loader else loader)
-        elif self.objective == "Backdoor":
+        elif self.obj == "Backdoor":
             feedback = eval_op_ensemble_attack(server_models, self.loader if not loader else loader)
+        return feedback
+
+    def feedback_on_attack(self, loader=None, class_num=10):
+        feedback = None
+        if self.obj == "targeted_label_flip":
+            feedback = eval_op_ensemble_tr_lf_attack([self.model], self.loader if not loader else loader)
+        elif self.obj in ["label_flip", "rev_cos"]:
+            feedback = eval_op_ensemble_lp_attack([self.model], self.loader if not loader else loader, class_num)
+        elif self.obj == "Backdoor":
+            feedback = eval_op_ensemble_attack([self.model], self.loader if not loader else loader)
+        else:
+            print("objective unknown")
         return feedback
             
     def synchronize_with_server(self, server):

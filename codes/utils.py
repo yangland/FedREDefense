@@ -871,7 +871,7 @@ def restore_dict_grad_dict(grad_dict, server_w, model_dict):
 
     for name, param in model_dict.items():
         if name not in missing_keys:
-            print("name", name)
+            # print("name", name)
             print(grad_dict[name].shape, server_w[name].shape)
 
             restored_w[name] = grad_dict[name] + server_w[name]                           
@@ -1823,7 +1823,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 losses.append(round(eval_epoch(model, loader), 2))
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            loss_ce = nn.CrossEntropyLoss()(model(x), y)
+            loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
             # in the untraining reverse the sign of loss
             loss_ce = - loss_ce
             running_loss += loss_ce.item() * y.shape[0]
@@ -1839,7 +1839,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             optimizer.step()
             scheduler.step()
             if it % 5 == 0:
-                print(f"ep{ep}, loss_cs: {loss_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
+                print(f"ep{ep}, loss_ce: {loss_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
         cos_d = cos_dist(grad_ben, grad_mail)
@@ -1855,9 +1855,6 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
             model.load_state_dict(restored_crafted)
             break
-        # else:
-            # check_point = model.state_dict().detach().clone()
-        
 
     return {"loss": running_loss / samples}
 

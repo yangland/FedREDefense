@@ -849,6 +849,36 @@ class Client_AOP(Device):
         return cos_sim, closest_tensor
 
 
+class Client_UtCos(Device):
+    def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset='cifar10'):
+        super().__init__(loader)
+        self.id = idnum
+        self.model_name = model_name
+        self.model_fn = partial(model_utils.get_model(self.model_name)[0],
+                                num_classes=num_classes, dataset=dataset)
+        self.model = self.model_fn().to(device)
+        self.W = {key: value for key, value in self.model.named_parameters()}
+        self.init_model = None
+        self.optimizer_fn = optimizer_fn
+        self.optimizer = self.optimizer_fn(self.model.parameters())
+        self.benign_grad = dict()
+        self.mali_grad = dict()
+
+    def synchronize_with_server(self, server):
+        self.server_state = server.model_dict[self.model_name].state_dict()
+        self.model.load_state_dict(self.server_state, strict=False)    
+    
+    def compute_weight_benign_update(self, epochs=1, loader=None):
+        train_stats = train_op(
+            self.model, self.loader if not loader else loader, self.optimizer, epochs)
+        return train_stats
+
+    def compute_weight_update(self, epochs=1, loader=None):
+        # uniformed attack 
+        return None
+
+        
+
 class Client_UAM(Device):
     def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset='cifar10'):
         super().__init__(loader)
