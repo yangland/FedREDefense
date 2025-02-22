@@ -898,6 +898,7 @@ def restore_dict_w(param_dict, model_dict):
             restored_w[name] = model_dict[name]
     return restored_w
 
+
 def eval_epoch(model, loader):
     model.eval()
     running_loss, samples = 0.0, 0
@@ -1843,11 +1844,11 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 print(f"ep{ep}, loss_ce: {loss_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
-        cos_d = cos_dist(grad_ben, grad_mail)
+        crafted_cos_d = cos_dist(grad_ben, grad_mail)
         print("eval losses", losses)
-        print(f"cos_d: {cos_d}, budget: {budget}")
-        
-        if cos_d > budget:
+        print(f"cos_d: {crafted_cos_d}, budget: {budget}")
+        cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+        if crafted_cos_d > budget:
             print(f"budget exceeded, finish training early, ep = {ep}")
             craft_g, k, cos_d2 = weighted_avg_budget_cos(a=grad_mail, 
                                                         b=grad_ben, 
@@ -1855,15 +1856,25 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             print(f"crafted cos: {cos_d2}")
             restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
             model.load_state_dict(restored_crafted)
+            crafted_cos_d = cos_dist(grad_ben, craft_g)
+            
+            print(f"crafted cos_d: {crafted_cos_d}")
+            print(f"another cos_d: {1-cos(grad_ben, grad_mail)}")
             break
 
     return {"loss": running_loss / samples}
 
 
-def cos_dist(w1, w2):
-    """Compute cosine similarity between two flattened weight tensors"""
-    w1_flat, w2_flat = torch.cat([p.view(-1) for p in w1]), torch.cat([p.view(-1) for p in w2])
-    return 1 - torch.dot(w1_flat, w2_flat) / (torch.norm(w1_flat) * torch.norm(w2_flat))
+def cos_dist(w1, w2, eps=1e-9):
+    """Compute cosine distance between two flattened weight tensors"""
+    w1_flat = torch.cat([p.view(-1) for p in w1])
+    w2_flat = torch.cat([p.view(-1) for p in w2])
+    
+    # Cosine similarity computation
+    cosine_similarity = torch.dot(w1_flat, w2_flat) / (torch.norm(w1_flat) * torch.norm(w2_flat) + eps)
+    
+    # Return cosine distance
+    return 1 - cosine_similarity
 
 
 def filter_trainable_state_dict(model):
