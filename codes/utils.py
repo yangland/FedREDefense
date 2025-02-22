@@ -1421,8 +1421,8 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             right_ben += 1
     turn+=1
     logger.info(f"mali vs ben: {wrong_mal}, {right_ben}; mali% {(round(wrong_mal/(wrong_mal+right_ben)*100, 4))}")
-    logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn))}')
-    logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn))}')
+    logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn + 1e-9))}')
+    logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn + 1e-9))}')
     
     clip_value = np.median(norm_list)
     for i in range(len(benign_client)):
