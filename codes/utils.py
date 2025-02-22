@@ -725,6 +725,8 @@ def weighted_avg_budget_cos(a: torch.Tensor, b: torch.Tensor, budget: float):
     :param budget: Float, constraint on 1 - cosine similarity
     :return: Tuple (c, t)
     """
+    a = a.detach().clone()
+    b = b.detach().clone()
     
     def cosine_similarity(x, y):
         return torch.nn.functional.cosine_similarity(x.flatten(), y.flatten(), dim=0)
@@ -735,16 +737,17 @@ def weighted_avg_budget_cos(a: torch.Tensor, b: torch.Tensor, budget: float):
         # print("left,right", left, right)
         mid = (left + right) / 2
         c = mid * a + (1 - mid) * b
-        cos_sim = cosine_similarity(a, c)
-        # print("cos", cos_sim)
-        if 1 - cos_sim <= budget:
+        cos_d = 1 - cosine_similarity(a, c)
+
+        if cos_d <= budget:
             best_t = mid  # Store valid t
             right = mid  # Try a smaller t
         else:
             left = mid  # Increase t
     
     c = best_t * a + (1 - best_t) * b
-    return c, best_t*100, 1 - cos_sim
+    cos_d = 1 - cosine_similarity(a, c)
+    return c, best_t*100, cos_d
 
 
 
@@ -1847,19 +1850,20 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
         crafted_cos_d = cos_dist(grad_ben, grad_mail)
         print("eval losses", losses)
         print(f"cos_d: {crafted_cos_d}, budget: {budget}")
-        cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+
         if crafted_cos_d > budget:
             print(f"budget exceeded, finish training early, ep = {ep}")
-            craft_g, k, cos_d2 = weighted_avg_budget_cos(a=grad_mail, 
-                                                        b=grad_ben, 
+            craft_g, k, cos_d2 = weighted_avg_budget_cos(a=grad_ben, 
+                                                        b=grad_mail, 
                                                         budget=budget)
             print(f"crafted cos: {cos_d2}")
+            
             restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
             model.load_state_dict(restored_crafted)
             crafted_cos_d = cos_dist(grad_ben, craft_g)
-            
+             
             print(f"crafted cos_d: {crafted_cos_d}")
-            print(f"another cos_d: {1-cos(grad_ben, grad_mail)}")
+
             break
 
     return {"loss": running_loss / samples}
@@ -1867,11 +1871,12 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
 
 def cos_dist(w1, w2, eps=1e-9):
     """Compute cosine distance between two flattened weight tensors"""
-    w1_flat = torch.cat([p.view(-1) for p in w1])
-    w2_flat = torch.cat([p.view(-1) for p in w2])
+    cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+    w1_flat = torch.cat([p.view(-1) for p in w1]).to(device)
+    w2_flat = torch.cat([p.view(-1) for p in w2]).to(device)
     
     # Cosine similarity computation
-    cosine_similarity = torch.dot(w1_flat, w2_flat) / (torch.norm(w1_flat) * torch.norm(w2_flat) + eps)
+    cosine_similarity = cos(w1_flat, w2_flat, eps=eps)
     
     # Return cosine distance
     return 1 - cosine_similarity
