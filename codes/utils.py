@@ -1772,6 +1772,20 @@ def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor
     return A @ B.T  # Compute cosine similarity
 
 
+def cos_pairs_and_mean(grad_all, grad_mean):
+    mean_flat = flat_dict(grad_mean)
+    
+    cos_mean, cos_med, cos_std = mean_cosine_similarity(grad_all)
+    
+    norm_all = torch.nn.functional.normalize(torch.tensor(grad_all).to(device), dim=1)
+    mean_flat = mean_flat / mean_flat.norm(dim=0, keepdim=True)
+    
+    if mean_flat.dim() == 1:
+        mean_flat = mean_flat.unsqueeze(0) 
+    cos_to_mean = torch.mm(mean_flat, norm_all.T).squeeze().mean().item()
+    return cos_mean, cos_med, cos_std, cos_to_mean
+
+
 def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     """
     find cos simliarity between mali and benign grads
@@ -1863,20 +1877,20 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             crafted_cos_d = cos_dist(grad_ben, craft_g)
              
             print(f"crafted cos_d: {crafted_cos_d}")
-
             break
+        
 
     return {"loss": running_loss / samples}
 
 
 def cos_dist(w1, w2, eps=1e-9):
     """Compute cosine distance between two flattened weight tensors"""
-    cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+    cos = nn.CosineSimilarity(dim=0, eps=eps)
     w1_flat = torch.cat([p.view(-1) for p in w1]).to(device)
     w2_flat = torch.cat([p.view(-1) for p in w2]).to(device)
     
     # Cosine similarity computation
-    cosine_similarity = cos(w1_flat, w2_flat, eps=eps)
+    cosine_similarity = cos(w1_flat, w2_flat)
     
     # Return cosine distance
     return 1 - cosine_similarity
