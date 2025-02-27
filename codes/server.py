@@ -52,7 +52,7 @@ def norm_clip(nparr1, nparr2):
     return vnum / (np.linalg.norm(nparr2, ord=None, axis=None, keepdims=False) + 1e-9)
 
 
-def get_update(update, model):
+def get_model_update(update, model):
     '''get the update weight'''
     output = OrderedDict()
     for key, var in update.items():
@@ -262,7 +262,7 @@ class Server(Device):
     def fltrust(self, clients, root_loader, epochs):
         sd_before = copy.deepcopy(self.model.state_dict())
         server_train_stats = train_op(self.model, root_loader, self.optimizer, epochs)
-        server_update = get_update(self.model.state_dict(), sd_before)
+        server_update = get_model_update(self.model.state_dict(), sd_before)
         
         unique_client_model_names = np.unique([client.model_name for client in clients])
         for model_name in unique_client_model_names:
@@ -286,7 +286,7 @@ class MaliCC(Device):
         self.W = {key: value for key, value in self.model.named_parameters()}
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.95)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=1)
         self.obj = obj
         self.num_classes = num_classes
 
@@ -298,6 +298,7 @@ class MaliCC(Device):
         self.dsm = None
         self.sub_loader = None
         self.data = data
+        self.server_state = None
 
     def reset_lr(self, new_lr):
         self.scheduler._step_count = 0

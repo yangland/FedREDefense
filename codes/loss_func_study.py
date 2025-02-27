@@ -28,7 +28,7 @@ model_name = "ConvNet" # "resnet8", "ConvNet"
 num_classes = 10
 dataset ="fmnist"
 
-def cos_dist(w1, w2):
+def cos_dist_w(w1, w2):
     """Compute cosine similarity between two flattened weight tensors"""
     w1_flat, w2_flat = torch.cat([p.view(-1) for p in w1]), torch.cat([p.view(-1) for p in w2])
     return 1 - torch.dot(w1_flat, w2_flat) / (torch.norm(w1_flat) * torch.norm(w2_flat))
@@ -83,7 +83,7 @@ def reverse_train_w_cos(model, loader, optimizer, epochs, model0_sd, model1_sd, 
             print(f"ep{ep}, loss_cs: {loss_ce}, loss_cos: {loss_cos}, loss_obj: {loss_obj}")
         
         # break
-        cos_d = cos_dist(grad_ben, grad_mail)
+        cos_d = cos_dist_w(grad_ben, grad_mail)
         print("eval losses", losses)
         
         if cos_d <= budget:
@@ -146,7 +146,7 @@ def main():
     model1_result = eval_op_ensemble(model1, test_loader)
     print("model1_result", model1_result)
     
-    cos_d_model1_2 = cos_dist(model1, model2)
+    cos_d_model1_2 = cos_dist_w(model1, model2)
     print("model1_2 cos dist", cos_d_model1_2)
     
     model2_result = eval_op_ensemble(model2, test_loader)

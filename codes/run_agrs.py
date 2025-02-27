@@ -30,6 +30,12 @@ imsize_dict = {
     "fmnist": (28, 28),
 }
 
+class_num_dict = {
+    "cifar10": 10,
+    "cinic10": 10,
+    "fmnist" : 10,   
+}
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--start", default=0, type=int)
 parser.add_argument("--end", default=None, type=int)
@@ -256,56 +262,85 @@ def run_experiment(xp, xp_count, n_experiments):
                 logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}")
                 
             elif hp["attack_method"] == "untargeted_cos":
-                malicc.synchronize_with_server(server)
-                acc_results0 = malicc.feedback_on_attack(class_num=10).items()
-                
+                """
                 # perform the untargeted attack optimization on malicc, and distributed to all clients
-                # ben_cos_mean, ben_cos_med, ben_cos_std = mean_cosine_similarity(ben_grad_all)
+                malicc.synchronize_with_server(server)
+                # test the accuracy before attack
+                acc_results0 = malicc.feedback_on_attack(class_num=10).items()
+
+                # get the average cos distance from each client to the mean
                 cos_mean, cos_med, cos_std, cos_to_mean = cos_pairs_and_mean(ben_grad_all, mal_user_grad_ben_mean)
-                
                 xp.log({"cos_mean": cos_mean})
                 xp.log({"cos_med": cos_med})
                 xp.log({"cos_std": cos_std})
                 xp.log({"mean_cos_to_mean": cos_to_mean})  
                 
+                # print("ben_grad_all[0]", ben_grad_all[0])
+                
+                # get the norm of benign clients
+                norm_list = np.array([])
+                for i in range(len(ben_grad_all)):
+                    norm_list = np.append(norm_list, torch.norm(torch.tensor(ben_grad_all[i]),p=2).item())
+                norm_value = np.median(norm_list)
                 
                 adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
-                adhoc_model = adhoc_model_fn().to(device)
+                ben_mean_model = adhoc_model_fn().to(device)
                 
                 print("malicc.model.state_dict() before", malicc.model.state_dict()['classifier.weight'][0])
                 print("mal_user_grad_ben_mean", mal_user_grad_ben_mean['classifier.weight'][0])
-                restored_crafted = restore_dict_grad_dict(mal_user_grad_ben_mean, 
+                
+                benign_mean_w = restore_dict_grad_dict(mal_user_grad_ben_mean, 
                                                           malicc.model.state_dict(), 
                                                           malicc.model.state_dict())
                 
-                adhoc_model.load_state_dict(restored_crafted)
+                ben_mean_model.load_state_dict(benign_mean_w)
                 
-                # print("adhoc_model.state_dict()", adhoc_model.state_dict()['classifier.weight'][0])
-                
-                malicc.sub_loader = malicc.get_sub_dataloader(mult=min(4, malicc.data_multiplier))
-                
-                # print("malicc.sub_loader.batch_size", malicc.sub_loader.batch_size)
+                malicc.sub_loader = malicc.get_sub_dataloader(mult=min(1, malicc.data_multiplier))
                 
                 malicc.reset_lr(new_lr=0.01)
                 print("malicc.optimizer", malicc.optimizer)
                 
-                budget = (1-cos_to_mean) * 1.25
+                budget = (1-cos_to_mean) 
                 
                 malicc.compute_weight_mali_update(model0=malicc.model, 
-                                                  model1=adhoc_model, 
-                                                  epochs=2, 
+                                                  model1=ben_mean_model, 
+                                                  epochs=1, 
                                                   loader=malicc.sub_loader, 
                                                   beta=0.5, 
                                                   budget=budget)
                 
-                # evaluate the crafted malicious client
                 acc_results2 = malicc.feedback_on_attack(class_num=10).items()
                 
-                print(f"server model acc: {acc_results0}, crafted with malicc, wt budget {budget}, acc: {acc_results2}")
+                # get the gradient of malicc
+                mali_grad = get_model_update(malicc.model.state_dict(), malicc.server_state)
+                print(f"norm_value: {norm_value}")
+                print(f"mali_grad norm: {torch.norm(parameters_dict_to_vector(mali_grad), p=2)}")
+                
+                normalized_mali_flat = flat_dict(mali_grad) * (norm_value / flat_dict(mali_grad).abs().max())
+                
+                lambda_ = 1.5
+                
+                mali_w = restore_dict_grad_flat(normalized_mali_flat * lambda_, 
+                                                malicc.server_state, 
+                                                malicc.model.state_dict())
+                
+                malicc.model.load_state_dict(mali_w)
+                
+                # evaluate the crafted malicious client
+                acc_results3 = malicc.feedback_on_attack(class_num=10).items()
+                
+                print(f"server acc: {acc_results0}, crafted budget {budget}, acc: {acc_results2}, normlized acc: {acc_results3}")
                 
                 for client in mali_clients:
                     client.model.load_state_dict(malicc.model.state_dict())
-
+                """
+                budget, acc_results0, acc_results1, acc_results2 = \
+                                untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben_mean, 
+                                mali_clients, model_name, num_classes, xp, hp, K=2, beta=0.5, lambda_=1.5)
+                
+                print(f"server acc: {acc_results0}, crafted budget {budget}, acc: {acc_results1}, normlized acc: {acc_results2}")
+                
+                
         # Both benign and malicous clients compute weight update
         for client in participating_clients:
             client.synchronize_with_server(server)

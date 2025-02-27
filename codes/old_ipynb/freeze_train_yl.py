@@ -142,9 +142,9 @@ for k in np.linspace(start=0, stop=1, num=points):
     freeze_random_weights(model2, freeze_ratio=k)
     acc_, asr_ = model_eval(model2, test_loader)
     defreeze_model(model2)
-    delta, cos_dist = get_delta_cos(model1, model2, model0_sd)
+    delta, cos_dist_w = get_delta_cos(model1, model2, model0_sd)
     
     
-    results[k] = (acc_, asr_, cos_dist)
+    results[k] = (acc_, asr_, cos_dist_w)
     
 print("results:\n", results)

@@ -23,6 +23,7 @@ from copy import deepcopy
 from torch import linalg as LA
 from torch.utils.data import DataLoader
 import random
+import models as model_utils
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 logger = logging.getLogger("logger")
 
@@ -859,7 +860,13 @@ def restore_dict_grad_flat(flat_grad, server_w, model_dict):
     start = 0
     for name, param in model_dict.items():
         if name not in missing_keys:
+            # print("name", name) #  features.0.weight
             num_elements = param.numel()
+            # print("num_elements", num_elements) # 1152
+            # print("param.shape", param.shape) # [128, 1, 3, 3]
+            # print("flat_grad", flat_grad.size())
+            # print("flat_grad[start:start + num_elements].view(param.shape)", flat_grad[start:start + num_elements].view(param.shape).size())
+            # print("server_w[name]", server_w[name].size())
             restored_w[name] = flat_grad[start:start + num_elements].view(param.shape) + server_w[name]                         
             start += num_elements
         else:
@@ -1384,7 +1391,7 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
     for param in sources:
         local_model_vector.append(parameters_dict_to_vector_flt(param))
         # get the local weight difference (gradient)
-        update_params.append(get_update(param, target))
+        update_params.append(get_model_update(param, target))
     for i in range(len(local_model_vector)):
         cos_i = []
         for j in range(len(local_model_vector)):
@@ -1635,11 +1642,11 @@ def no_defence_balance(params, global_parameters):
 
     return global_parameters
 
-def get_update(update, model):
+def get_model_update(updated_model, model):
     '''get the update weight'''
     update2 = {}
-    for key, var in update.items():
-        update2[key] = update[key] - model[key]
+    for key, var in updated_model.items():
+        update2[key] = updated_model[key] - model[key]
     return update2
 
 def UAM_construct_mali_grads(uam_att_params, mali_grad, benign_grad, mali_ids):
@@ -1895,6 +1902,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     running_loss, samples = 0.0, 0
     print(f"data length {len(loader) * loader.batch_size}: batches {len(loader)}, batch_size {loader.batch_size}")
     
+    last_grad_mail = grad_ben
     for ep in range(epochs):
         for it, (x, y) in enumerate(loader):
             if it % 2 == 0:
@@ -1921,29 +1929,132 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 print(f"ep{ep}, loss_ce: {loss_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
-        crafted_cos_d = cos_dist(grad_ben, grad_mail)
+        crafted_cos_d = cos_dist_w(grad_ben, grad_mail)
         print("eval losses", losses)
         print(f"cos_d: {crafted_cos_d}, budget: {budget}")
 
         if crafted_cos_d > budget:
             print(f"budget exceeded, finish training early, ep = {ep}")
-            craft_g, k, cos_d2 = weighted_avg_budget_cos(a=grad_ben, 
-                                                        b=grad_mail, 
-                                                        budget=budget)
-            print(f"crafted cos: {cos_d2}")
-            
-            restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
-            model.load_state_dict(restored_crafted)
-            crafted_cos_d = cos_dist(grad_ben, craft_g)
-             
-            print(f"crafted cos_d: {crafted_cos_d}")
             break
         
+        last_grad_mail = grad_mail
+        
+    # craft_g = combine_tensors(B=grad_ben, M=grad_mail, budget=budget)
+    craft_g = craft_tensor(B=grad_ben, M1=last_grad_mail, M2=grad_mail, k=budget)
+    
+    restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
+    model.load_state_dict(restored_crafted)
+    crafted_cos_d = cos_dist_w(grad_ben, craft_g)
+        
+    print(f"crafted cos_d: {crafted_cos_d}")        
 
     return {"loss": running_loss / samples}
 
 
-def cos_dist(w1, w2, eps=1e-9):
+
+def cosine_distance(A, B):
+    return 1 - F.cosine_similarity(A, B, dim=-1, eps=1e-8)
+
+
+def rotate_to_distance(M2, B, k):
+    """
+    Rotate M2 to maintain its magnitude but adjust its direction
+    so that its cosine distance with B becomes exactly k.
+    """
+    # print("model size", B.size())
+    
+    # Calculate the current cosine similarity between M2 and B
+    cos_B_M2 = F.cosine_similarity(M2, B, dim=-1).clamp(min=-1.0, max=1.0)
+    
+    # Ensure the cosine similarity value is in range [-1, 1]
+    cos_B_M2 = cos_B_M2.item()
+
+    # If cos_B_M2 == k, M2 is already aligned as required
+    if cos_B_M2 == k:
+        return M2
+    
+    # Projection of M2 onto B (in the direction of B)
+    M2_proj_B = cos_B_M2 * B / torch.norm(B)
+    
+    # Now we want to adjust M2 to have a cosine similarity of k with B
+    scale_factor = k / cos_B_M2 if cos_B_M2 != 0 else 0  # Prevent divide by zero error
+    
+    # Adjust M2 by rotating it in the direction of B (this does not change its magnitude)
+    rotated_M2 = (M2 - M2_proj_B) + (scale_factor * M2_proj_B)
+    
+    # print("rotated_M2 size", rotated_M2.size())
+    return rotated_M2
+
+
+def weighted_average_to_cosine_distance(B, M1, M2, k):
+    # Compute cosine distances
+    d_cos_B_M1 = cosine_distance(B, M1)
+    d_cos_B_M2 = cosine_distance(B, M2)
+    
+    # Check conditions
+    if d_cos_B_M2 > k and d_cos_B_M1 < k:
+        # Find the weight alpha such that cos(B, C) = k
+        # C = alpha * M1 + (1 - alpha) * M2
+        # We need to solve for alpha such that cosine_distance(B, C) = k
+        
+        # Define a function to compute the cosine distance between B and C
+        def objective(alpha):
+            alpha_tensor = torch.tensor(alpha, dtype=torch.float32)  # Convert alpha to a tensor
+            C = alpha_tensor * M1 + (1 - alpha_tensor) * M2
+            return cosine_distance(B, C).item() - k  # Return as a scalar
+        
+        # Use a numerical solver to find alpha
+        from scipy.optimize import fsolve
+        alpha_initial_guess = 0.5
+        alpha = fsolve(objective, alpha_initial_guess)[0]
+        
+        # Convert alpha to a tensor and craft the new tensor C
+        alpha_tensor = torch.tensor(alpha, dtype=torch.float32)
+        C = alpha_tensor * M1 + (1 - alpha_tensor) * M2
+        return C
+    else:
+        # If conditions are not met, return None or handle accordingly
+        return None
+
+
+def craft_tensor(B, M1, M2, k):
+    d_cos_B_M2 = cosine_distance(B, M2)
+    d_cos_B_M1 = cosine_distance(B, M1)
+    
+    if d_cos_B_M2 < k:
+        # M2 = rotate_to_distance(B, M2, k)
+        return M2
+    if d_cos_B_M2 > k and d_cos_B_M1 < k:
+        return weighted_average_to_cosine_distance(B, M1, M2, k)
+    else:
+        return M2
+
+
+
+# def combine_tensors(B, M, budget):
+#     # Normalize B and M to unit vectors
+#     B_norm = B / B.norm(dim=-1, keepdim=True)
+#     M_norm = M / M.norm(dim=-1, keepdim=True)
+    
+#     # Compute cosine similarity
+#     cos_sim = torch.sum(B_norm * M_norm, dim=-1)
+#     d = 1 - cos_sim  # cosine distance
+    
+#     assert budget < d, "Target cosine distance must be smaller than the current distance."
+    
+#     # Interpolation factor
+#     alpha = (d - budget) / d
+    
+#     # Interpolate between B and M
+#     C = (1 - alpha) * B + alpha * M
+    
+#     # Normalize C to maintain scale consistency
+#     C_norm = C / C.norm(dim=-1, keepdim=True)
+    
+#     return C_norm
+
+
+def cos_dist_w(w1, w2, eps=1e-9):
     """Compute cosine distance between two flattened weight tensors"""
     cos = nn.CosineSimilarity(dim=0, eps=eps)
     w1_flat = torch.cat([p.view(-1) for p in w1]).to(device)
@@ -1968,3 +2079,63 @@ def filter_trainable_state_dict(model):
     """
     param_names = {name for name, _ in model.named_parameters()}
     return {k: v for k, v in model.state_dict().items() if k in param_names}
+
+
+def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben_mean, 
+                                 mali_clients, model_name, num_classes, xp, hp, K, beta, lambda_):
+    """Performs an untargeted cosine budget attack by optimizing malicious updates."""
+    
+    # Synchronize malicious client with the server
+    malicc.synchronize_with_server(server)
+    
+    # Test accuracy before attack
+    acc_results0 = malicc.feedback_on_attack(class_num=10).items()
+    
+    # Compute cosine distances and log statistics
+    cos_mean, cos_med, cos_std, cos_to_mean = cos_pairs_and_mean(ben_grad_all, mal_user_grad_ben_mean)
+    xp.log({"cos_mean": cos_mean, "cos_med": cos_med, "cos_std": cos_std, "mean_cos_to_mean": cos_to_mean})
+    
+    # Compute the median norm of benign clients
+    norm_list = np.array([torch.norm(torch.tensor(grad), p=2).item() for grad in ben_grad_all])
+    norm_value = np.median(norm_list)
+    
+    # Initialize benign mean model
+    adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
+    ben_mean_model = adhoc_model_fn().to(device)
+    
+    # Restore benign mean weights and load into model
+    benign_mean_w = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.model.state_dict(), malicc.model.state_dict())
+    ben_mean_model.load_state_dict(benign_mean_w)
+    
+    # Prepare malicious client for attack
+    malicc.sub_loader = malicc.get_sub_dataloader(mult=min(2, malicc.data_multiplier))
+    malicc.reset_lr(new_lr=0.05)
+    
+    # Compute attack budget
+    budget = 1 - cos_to_mean
+    
+    # Update malicious weights
+    malicc.compute_weight_mali_update(
+        model0=malicc.model, model1=ben_mean_model, epochs=K, 
+        loader=malicc.sub_loader, beta=beta, budget=budget)
+    
+    # Evaluate attack progress
+    acc_results1 = malicc.feedback_on_attack(class_num=10).items()
+    
+    # Compute and normalize malicious gradient update
+    mali_grad = get_model_update(malicc.model.state_dict(), malicc.server_state)
+    mali_grad_norm = torch.norm(parameters_dict_to_vector(mali_grad), p=2)
+    normalized_mali_flat = flat_dict(mali_grad) * (norm_value / flat_dict(mali_grad).abs().max())
+    
+    # Scale with lambda and update model
+    mali_w = restore_dict_grad_flat(normalized_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+    malicc.model.load_state_dict(mali_w)
+    
+    # Evaluate final attack results
+    acc_results2 = malicc.feedback_on_attack(class_num=10).items()
+    
+    # Distribute malicious model to all malicious clients
+    for client in mali_clients:
+        client.model.load_state_dict(malicc.model.state_dict())
+    
+    return budget, acc_results0, acc_results1, acc_results2
