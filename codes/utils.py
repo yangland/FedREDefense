@@ -2125,6 +2125,7 @@ def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben
     # Compute and normalize malicious gradient update
     mali_grad = get_model_update(malicc.model.state_dict(), malicc.server_state)
     mali_grad_norm = torch.norm(parameters_dict_to_vector(mali_grad), p=2)
+    print(f"benign norm {norm_value}, mali norm {mali_grad_norm}")
     normalized_mali_flat = flat_dict(mali_grad) * (norm_value / flat_dict(mali_grad).abs().max())
     
     # Scale with lambda and update model

@@ -7,11 +7,11 @@ hyperparameters04='[{
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 100}],
 
-    "attack_rate" :  [0.28],
+    "attack_rate" :  [0.25],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
-    "alpha" : [1.0],
+    "alpha" : [0.5],
     "communication_rounds" : [500],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
