@@ -110,8 +110,7 @@ class Server(Device):
                                               0], num_classes=num_classes, dataset=dataset)().to(device) for model_name in model_names}
 
         self.models = list(self.model_dict.values())
-        # print("self.model_dict keys", self.model_dict.keys())
-        # print("self.parameter_dict", self.parameter_dict)
+        self.fltrust_rootds = None
 
     def evaluate_ensemble(self):
         return eval_op_ensemble(self.models, self.loader)
@@ -256,6 +255,21 @@ class Server(Device):
         for model_name in unique_client_model_names:
             reduce_foolsgold(target=self.parameter_dict[model_name],
                              sources=[client.W for client in clients if client.model_name == model_name])
+
+
+
+
+    def fltrust(self, clients, root_loader, epochs):
+        sd_before = copy.deepcopy(self.model.state_dict())
+        server_train_stats = train_op(self.model, root_loader, self.optimizer, epochs)
+        server_update = get_update(self.model.state_dict(), sd_before)
+        
+        unique_client_model_names = np.unique([client.model_name for client in clients])
+        for model_name in unique_client_model_names:
+            reduce_fltrust(  target=self.parameter_dict[model_name],
+                             sources=[client.W for client in clients if client.model_name == model_name],
+                             server_update= server_update)
+
 
 
 # add a special Server class malicious command center

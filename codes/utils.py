@@ -20,6 +20,9 @@ import math
 import logging
 from sklearn.metrics import confusion_matrix
 from copy import deepcopy
+from torch import linalg as LA
+from torch.utils.data import DataLoader
+import random
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 logger = logging.getLogger("logger")
 
@@ -1492,6 +1495,63 @@ def reduce_foolsgold(target, sources):
     wv_normal = [x / sum(wv) for x in wv]
     
     reduce_weighted(target, sources, torch.tensor(wv_normal).to(device))
+
+
+def cosScoreAndClipValue(model_dict1, model_dict2):
+    
+    def model2tensor(model_dict):
+        ravel_list = []
+        for layer_name, parms in model_dict.items():
+            ravel_list.append(torch.ravel(parms))
+        ravel_list = torch.cat(ravel_list, 0)
+        return torch.unsqueeze(ravel_list, 0)
+    
+    def relu_cos(a, b):
+        # a, b as tensors 
+        cos_sim = nn.CosineSimilarity(dim=1, eps=1e-6)
+        cos = cos_sim(a, b)
+        
+        '''relu'''
+        if cos < 0:
+            cos = 0
+        return cos
+
+    def norm_clip(a, b):
+        # a, b as tensors
+        res = LA.norm(a)/(LA.norm(b)+1e-9)
+        return res
+        
+    t1 = model2tensor(model_dict1)
+    t2 = model2tensor(model_dict2)
+    return relu_cos(t1, t2), norm_clip(t1, t2)
+
+
+def reduce_fltrust(target, sources, server_update):
+    # caculate trust score
+    FLTrustTotalScore = 1e-9
+    trust_score_list = []
+    clip_value_list = []
+    
+    for client_id in sources:
+        client_trust_score, client_clipped_value = cosScoreAndClipValue(server_update, sources[client_id])
+        FLTrustTotalScore += client_trust_score
+        trust_score_list.append(client_trust_score)
+        clip_value_list.append(client_clipped_value)
+                    
+    trust_score_list = [x / FLTrustTotalScore  for x in trust_score_list]
+    # weighted average of grad
+    fltrust_weights_list = [a*b for a,b in zip(trust_score_list, clip_value_list)]
+    fltrust_weights = dict(zip(sources, fltrust_weights_list))
+    
+    wv_normal = [x / sum(fltrust_weights) for x in fltrust_weights]
+    
+    reduce_weighted(target, sources, torch.tensor(wv_normal).to(device))
+
+def get_fltrust_rootds(train_ds, sample_size):
+    indices = random.sample(list(range(len(train_ds))), sample_size) 
+    sub_ds = torch.utils.data.Subset(train_ds, indices)
+    sub_loader = DataLoader(sub_ds, batch_size=32)
+    return sub_loader
 
 def parameters_dict_to_vector_rlr(net_dict) -> torch.Tensor:
     r"""Convert parameters to one vector

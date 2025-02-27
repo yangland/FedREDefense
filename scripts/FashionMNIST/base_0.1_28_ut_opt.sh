@@ -1,14 +1,14 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
-# attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='5'
+# attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
+export CUDA_VISIBLE_DEVICES='6'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"ConvNet" : 50}],
+    "models" : [{"ConvNet" : 100}],
 
     "attack_rate" :  [0.28],
-    "attack_method": ["untargeted_cos"],
+    "attack_method": ["label_flip"],
     "participation_rate" : [1],
 
     "alpha" : [0.1],

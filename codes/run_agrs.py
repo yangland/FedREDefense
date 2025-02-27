@@ -115,6 +115,10 @@ def run_experiment(xp, xp_count, n_experiments):
                     num_classes=num_classes, dataset=hp['dataset'])
 
     initial_model_state = server.models[0].state_dict().copy()
+    
+    if hp["aggregation_mode"] == "fltrust":
+        fltrust_root_dl = get_fltrust_rootds(train_data, sample_siz=100)
+    
     if hp["attack_rate"] == 0:
         clients = [Client(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset=hp['dataset'])
                    for i, (loader, model_name) in enumerate(zip(client_loaders, model_names))]
@@ -328,6 +332,8 @@ def run_experiment(xp, xp_count, n_experiments):
             xp.log({"flame_mali_select_precentage": mali_select_p})
         elif hp["aggregation_mode"] == "foolsgold":
             server.foolsgold(participating_clients)
+        elif hp["aggregation_mode"] == "fltrust":
+            server.fltrust(participating_clients, root_loader=fltrust_root_dl, epochs=hp['local_epochs'])
         else:
             import pdb
             pdb.set_trace()
