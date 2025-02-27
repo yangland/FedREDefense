@@ -336,9 +336,13 @@ def run_experiment(xp, xp_count, n_experiments):
                 """
                 budget, acc_results0, acc_results1, acc_results2 = \
                                 untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                mali_clients, model_name, num_classes, xp, hp, K=2, beta=0.5, lambda_=15)
+                                mali_clients, model_name, num_classes, xp, hp, K=2, beta=0.5, lambda_=1.5)
                 
                 print(f"server acc: {acc_results0}, crafted budget {budget}, acc: {acc_results1}, normlized acc: {acc_results2}")
+                xp.log({"mali_vali_server": next(iter(acc_results0.values()))})
+                xp.log({"mali_vali_acc": next(iter(acc_results1.values()))})
+                xp.log({"mali_vali_norm_acc": next(iter(acc_results2.values()))})
+                xp.log({"attack_budget": budget})
                 
                 
         # Both benign and malicous clients compute weight update
