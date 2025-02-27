@@ -339,9 +339,9 @@ def run_experiment(xp, xp_count, n_experiments):
                                 mali_clients, model_name, num_classes, xp, hp, K=2, beta=0.5, lambda_=1.5)
                 
                 print(f"server acc: {acc_results0}, crafted budget {budget}, acc: {acc_results1}, normlized acc: {acc_results2}")
-                xp.log({"mali_vali_server": next(iter(acc_results0.values()))})
-                xp.log({"mali_vali_acc": next(iter(acc_results1.values()))})
-                xp.log({"mali_vali_norm_acc": next(iter(acc_results2.values()))})
+                xp.log({"mali_vali_server": next(iter(acc_results0))[1]})
+                xp.log({"mali_vali_acc": next(iter(acc_results1))[1]})
+                xp.log({"mali_vali_norm_acc": next(iter(acc_results2))[1]})
                 xp.log({"attack_budget": budget})
                 
                 

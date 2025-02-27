@@ -1999,7 +1999,7 @@ def weighted_average_to_cosine_distance(B, M1, M2, k):
         
         # Define a function to compute the cosine distance between B and C
         def objective(alpha):
-            alpha_tensor = torch.tensor(alpha, dtype=torch.float32)  # Convert alpha to a tensor
+            alpha_tensor = torch.tensor(alpha, dtype=torch.float32).to(device)  # Convert alpha to a tensor
             C = alpha_tensor * M1 + (1 - alpha_tensor) * M2
             return cosine_distance(B, C).item() - k  # Return as a scalar
         
