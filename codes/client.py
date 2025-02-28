@@ -863,6 +863,7 @@ class Client_UtCos(Device):
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.benign_grad = dict()
         self.mali_grad = dict()
+        self.W = {key: value for key, value in self.model.named_parameters()}
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -874,7 +875,7 @@ class Client_UtCos(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        # uniformed attack 
+        # uniformed attack, no need to process here
         return None
 
         

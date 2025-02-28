@@ -7,11 +7,11 @@ hyperparameters04='[{
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 100}],
 
-    "attack_rate" :  [0.25],
+    "attack_rate" :  [0.40],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
-    "alpha" : [0.05],
+    "alpha" : [1],
     "communication_rounds" : [500],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
@@ -31,7 +31,8 @@ hyperparameters04='[{
     "search_algo": ["MADS"],
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
-    "uniformed_att": ["True"]
+    "uniformed_att": ["True"],
+    "lambda_": 3
     }]'
 
 

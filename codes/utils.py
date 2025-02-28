@@ -1899,8 +1899,8 @@ class OppositeCrossEntropyLoss(torch.nn.Module):
         probs = F.softmax(logits, dim=-1)  # Convert logits to probabilities
         preds = torch.argmax(probs, dim=-1)  # Get predicted class
 
-        correct_mask = (preds == targets).float()  # Mask where predictions are correct
-        loss = correct_mask * torch.log(probs[torch.arange(len(targets)), targets] + 1e-10)  # Penalize correct predictions
+        correct_mask = (preds != targets).float()  # Mask where predictions are correct
+        loss = - correct_mask * torch.log(probs[torch.arange(len(targets)), targets] + 1e-10)  # Penalize correct predictions
 
         return loss.mean()  # Return mean loss
 
@@ -1923,11 +1923,15 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 losses.append(round(eval_epoch(model, loader), 2))
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            # loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
+            loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
             # in the untraining reverse the sign of loss
-            # loss_ce = - loss_ce
-            criterion = OppositeCrossEntropyLoss()
-            loss_oppo_ce = criterion(model(x), y)
+            # loss_oppo_ce = - torch.log(torch.log(loss_ce)+ 1e-8)
+            loss_oppo_ce = - loss_ce
+            
+            # criterion = OppositeCrossEntropyLoss()
+            # loss_oppo_ce = criterion(model(x), y)
+            # print("model(x)", model(x))
+            # print("y", y)
 
             running_loss += loss_oppo_ce.item() * y.shape[0]
             samples += y.shape[0]
@@ -1937,16 +1941,21 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             grad_mail = w - flat_grad_model0
             target = torch.ones(len(w)).to(device)
             loss_cos = nn.CosineEmbeddingLoss()(grad_ben.unsqueeze(0), grad_mail.unsqueeze(0), target)
-            loss_obj = -(1-beta) * loss_oppo_ce + beta * loss_cos
+            
+            # combindation loss
+            loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
+            # only negative loss
+            # loss_obj = loss_oppo_ce 
+            
             loss_obj.backward()
             optimizer.step()
             scheduler.step()
             if it % 10 == 0:
-                print(f"ep{ep}, loss_ce: {loss_oppo_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
+                print(f"ep{ep}, loss_ce: {loss_oppo_ce:.0f}, loss_cos: {loss_cos:.4f}, loss_obj: {loss_obj:.4f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
         crafted_cos_d = cos_dist_w(grad_ben, grad_mail)
-        print("eval losses", losses)
+        # print("eval losses", losses)
         print(f"cos_d: {crafted_cos_d}, budget: {budget}")
 
         if crafted_cos_d > budget:
@@ -2037,37 +2046,12 @@ def craft_tensor(B, M1, M2, k):
     d_cos_B_M2 = cosine_distance(B, M2)
     d_cos_B_M1 = cosine_distance(B, M1)
     
-    if d_cos_B_M2 < k:
-        # M2 = rotate_to_distance(B, M2, k)
-        return M2
+    # if d_cos_B_M1 < k < d_cos_B_M2, find the weighted average
     if d_cos_B_M2 > k and d_cos_B_M1 < k:
         return weighted_average_to_cosine_distance(B, M1, M2, k)
     else:
         return M2
 
-
-
-# def combine_tensors(B, M, budget):
-#     # Normalize B and M to unit vectors
-#     B_norm = B / B.norm(dim=-1, keepdim=True)
-#     M_norm = M / M.norm(dim=-1, keepdim=True)
-    
-#     # Compute cosine similarity
-#     cos_sim = torch.sum(B_norm * M_norm, dim=-1)
-#     d = 1 - cos_sim  # cosine distance
-    
-#     assert budget < d, "Target cosine distance must be smaller than the current distance."
-    
-#     # Interpolation factor
-#     alpha = (d - budget) / d
-    
-#     # Interpolate between B and M
-#     C = (1 - alpha) * B + alpha * M
-    
-#     # Normalize C to maintain scale consistency
-#     C_norm = C / C.norm(dim=-1, keepdim=True)
-    
-#     return C_norm
 
 
 def cos_dist_w(w1, w2, eps=1e-9):
@@ -2143,16 +2127,17 @@ def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben
     mali_grad_norm = torch.norm(parameters_dict_to_vector(mali_grad), p=2)
     print(f"benign norm {norm_value}, mali norm {mali_grad_norm}")
     normalized_mali_flat = flat_dict(mali_grad) * (norm_value / flat_dict(mali_grad).abs().max())
-    
+
     # Scale with lambda and update model
-    mali_w = restore_dict_grad_flat(normalized_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
-    malicc.model.load_state_dict(mali_w)
+    mali_w2 = restore_dict_grad_flat(normalized_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+    
+    malicc.model.load_state_dict(mali_w2, strict=False)
     
     # Evaluate final attack results
     acc_results2 = malicc.feedback_on_attack(class_num=10).items()
     
     # Distribute malicious model to all malicious clients
     for client in mali_clients:
-        client.model.load_state_dict(malicc.model.state_dict())
+        client.W = malicc.model.state_dict()
     
     return budget, acc_results0, acc_results1, acc_results2
