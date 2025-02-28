@@ -113,6 +113,7 @@ class Experiment():
 def get_all_hp_combinations(hp):
     '''Turns a dict of lists into a list of dicts'''
     combinations = it.product(*(hp[name] for name in hp))
+    print("combinations", combinations)
     hp_dicts = [{key : value[i] for i,key in enumerate(hp)}for value in combinations]
     return hp_dicts
 

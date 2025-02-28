@@ -216,7 +216,9 @@ def run_experiment(xp, xp_count, n_experiments):
         xp.log({"participating_clients": np.array(
             [c.id for c in participating_clients])})
         # For attack methods that require benign update from clients to construct the malicious upates
-        if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP", "untargeted_cos"] and hp["attack_method"]!="NO":
+        if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP", "untargeted_cos"] \
+            and hp["attack_method"]!="NO" \
+            and hp["attack_rate"]!=0:
             # mali clients get benign grads
             mali_clients, mali_ids = get_mali_clients_this_round(
                 participating_clients, client_loaders, hp["attack_rate"])
