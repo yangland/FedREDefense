@@ -1891,6 +1891,20 @@ def mean_cosine_similarity(A):
     return cos_sims.mean().item(), torch.median(cos_sims).item(), torch.std(cos_sims, dim=0).item()
 
 
+class OppositeCrossEntropyLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, logits, targets):
+        probs = F.softmax(logits, dim=-1)  # Convert logits to probabilities
+        preds = torch.argmax(probs, dim=-1)  # Get predicted class
+
+        correct_mask = (preds == targets).float()  # Mask where predictions are correct
+        loss = correct_mask * torch.log(probs[torch.arange(len(targets)), targets] + 1e-10)  # Penalize correct predictions
+
+        return loss.mean()  # Return mean loss
+
+
 def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
     model.train()
     # model.parameters need to use 
@@ -1909,11 +1923,13 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 losses.append(round(eval_epoch(model, loader), 2))
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
-
+            # loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
             # in the untraining reverse the sign of loss
-            loss_ce = - loss_ce
-            running_loss += loss_ce.item() * y.shape[0]
+            # loss_ce = - loss_ce
+            criterion = OppositeCrossEntropyLoss()
+            loss_oppo_ce = criterion(model(x), y)
+
+            running_loss += loss_oppo_ce.item() * y.shape[0]
             samples += y.shape[0]
             
             # add cos loss 
@@ -1921,12 +1937,12 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             grad_mail = w - flat_grad_model0
             target = torch.ones(len(w)).to(device)
             loss_cos = nn.CosineEmbeddingLoss()(grad_ben.unsqueeze(0), grad_mail.unsqueeze(0), target)
-            loss_obj = (1-beta) * loss_ce + beta * loss_cos
+            loss_obj = -(1-beta) * loss_oppo_ce + beta * loss_cos
             loss_obj.backward()
             optimizer.step()
             scheduler.step()
-            if it % 5 == 0:
-                print(f"ep{ep}, loss_ce: {loss_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
+            if it % 10 == 0:
+                print(f"ep{ep}, loss_ce: {loss_oppo_ce:6f}, loss_cos: {loss_cos:6f}, loss_obj: {loss_obj:6f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
         crafted_cos_d = cos_dist_w(grad_ben, grad_mail)
