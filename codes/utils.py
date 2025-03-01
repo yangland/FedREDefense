@@ -1742,6 +1742,7 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, mali_train
             if sync:
                 client.synchronize_with_server(server)
             benign_stats = client.compute_weight_benign_update(local_epochs)
+            client.W = client.model.state_dict()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
 
         for client in mali_clients:
@@ -1756,6 +1757,7 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, mali_train
             if sync:
                 client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(local_epochs)
+            client.W = client.model.state_dict()
             for name in client.W:
                 client.mali_grad[name] = client.W[name].detach() - server_weights[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
@@ -1923,16 +1925,27 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 losses.append(round(eval_epoch(model, loader), 2))
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
-            # in the untraining reverse the sign of loss
-            # loss_oppo_ce = - torch.log(torch.log(loss_ce)+ 1e-8)
-            loss_oppo_ce = - loss_ce
             
-            # criterion = OppositeCrossEntropyLoss()
-            # loss_oppo_ce = criterion(model(x), y)
-            # print("model(x)", model(x))
-            # print("y", y)
+            # 1 negative CE loss
+            loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
+            loss_oppo_ce = - loss_ce
 
+            
+            # 2 add sigmod on CE loss
+            # # Step 1: Apply sigmoid to logits
+            # logits = model(x)
+            
+            # probs = torch.sigmoid(logits)
+
+            # # Step 2: Normalize probabilities so they sum to 1 (mimic softmax)
+            # probs = probs / probs.sum(dim=1, keepdim=True)
+
+            # # Step 3: Compute cross-entropy loss manually
+            # loss_log = F.nll_loss(torch.log(probs), y)
+            
+            # loss_oppo_ce = - loss_log
+
+            # 
             running_loss += loss_oppo_ce.item() * y.shape[0]
             samples += y.shape[0]
             
@@ -1951,7 +1964,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             optimizer.step()
             scheduler.step()
             if it % 10 == 0:
-                print(f"ep{ep}, loss_ce: {loss_oppo_ce:.0f}, loss_cos: {loss_cos:.4f}, loss_obj: {loss_obj:.4f}, lr: {optimizer.param_groups[0]['lr']}")
+                print(f"ep{ep}, loss_ce: {loss_oppo_ce:.0f}, loss_cos: {loss_cos:.4f}, loss_obj: {loss_obj:.0f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
         crafted_cos_d = cos_dist_w(grad_ben, grad_mail)
@@ -2112,7 +2125,7 @@ def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben
     malicc.reset_lr(new_lr=0.05)
     
     # Compute attack budget
-    budget = 1 - cos_to_mean
+    budget = max(1e-4, 1 - cos_to_mean)
     
     # Update malicious weights
     malicc.compute_weight_mali_update(
@@ -2127,9 +2140,17 @@ def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben
     mali_grad_norm = torch.norm(parameters_dict_to_vector(mali_grad), p=2)
     print(f"benign norm {norm_value}, mali norm {mali_grad_norm}")
     normalized_mali_flat = flat_dict(mali_grad) * (norm_value / flat_dict(mali_grad).abs().max())
-
+    
+    if torch.isnan(normalized_mali_flat).any():
+        print("crafted normalized_mali_flat has NA values!")
+        
     # Scale with lambda and update model
     mali_w2 = restore_dict_grad_flat(normalized_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+    model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_w2.values()]).any().item()
+    if model_has_nan:
+        print("crafted model weight has NA values!")
+    else:
+        print("crafted model weight has NO NA values.")
     
     malicc.model.load_state_dict(mali_w2, strict=False)
     

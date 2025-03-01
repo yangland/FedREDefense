@@ -7,7 +7,7 @@ hyperparameters04='[{
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 100}],
 
-    "attack_rate" :  [0, 0.25, 0.40],
+    "attack_rate" :  [0.25, 0.40],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
@@ -32,7 +32,7 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "lambda_": [3]
+    "lambda_": [1]
     }]'
 
 

@@ -32,7 +32,7 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "lambda_": 3
+    "lambda_": [1]
     }]'
 
 
