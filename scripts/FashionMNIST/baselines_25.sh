@@ -7,7 +7,7 @@ hyperparameters04='[{
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 100}],
 
-    "attack_rate" :  [0, 0.25, 0.40],
+    "attack_rate" :  [0.25],
     "attack_method": ["label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum"],
     "participation_rate" : [1],
 
@@ -17,7 +17,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["FedAVG", "median", "krum", "flame"],
+    "aggregation_mode" : ["krum", "flame"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
@@ -32,7 +32,7 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "lambda_": [3]
+    "lambda_": [1]
     }]'
 
 
