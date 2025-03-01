@@ -266,7 +266,7 @@ def run_experiment(xp, xp_count, n_experiments):
             elif hp["attack_method"] == "untargeted_cos":
                 budget, acc_results0, acc_results1, acc_results2 = \
                                 untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                mali_clients, model_name, num_classes, xp, hp, K=2, beta=0.5, lambda_=hp["lambda_"])
+                                mali_clients, model_name, num_classes, xp, hp, K=4, beta=0.5, lambda_=hp["lambda_"])
                 
                 # print(f"server acc: {acc_results0}, crafted budget {budget}, acc: {acc_results1}, normlized acc: {acc_results2}")
                 xp.log({"mali_vali_server": next(iter(acc_results0))[1]})

@@ -2048,6 +2048,7 @@ def weighted_average_to_cosine_distance(B, M1, M2, k):
         
         # Convert alpha to a tensor and craft the new tensor C
         alpha_tensor = torch.tensor(alpha, dtype=torch.float32)
+        print("alpha_tensor", alpha_tensor)
         C = alpha_tensor * M1 + (1 - alpha_tensor) * M2
         return C
     else:
@@ -2122,7 +2123,7 @@ def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben
     
     # Prepare malicious client for attack
     malicc.sub_loader = malicc.get_sub_dataloader(mult=min(2, malicc.data_multiplier))
-    malicc.reset_lr(new_lr=0.05)
+    malicc.reset_lr(new_lr=0.025)
     
     # Compute attack budget
     budget = max(1e-4, 1 - cos_to_mean)

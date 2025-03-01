@@ -349,7 +349,7 @@ class MaliCC(Device):
         elif self.obj == "Backdoor":
             feedback = eval_op_ensemble_attack([self.model], self.loader if not loader else loader)
         elif self.obj == "rev_cos":
-            print("rev_cos model check:", self.model.state_dict()["features.0.weight"])
+            # print("rev_cos model check:", self.model.state_dict()["features.0.weight"])
             feedback = eval_op_ensemble([self.model], self.loader if not loader else loader)
         else:
             print("objective unknown")
