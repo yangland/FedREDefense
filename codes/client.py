@@ -50,7 +50,7 @@ class Client(Device):
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.benign_grad = None
+        self.benign_grad = dict()
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -184,7 +184,7 @@ class Client_MinMax(Device):
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
         self.all_grads = None
-        self.benign_grad = None
+        self.benign_grad = dict()
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -283,7 +283,7 @@ class Client_MinSum(Device):
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
         self.all_grads = None
-        self.benign_grad = None
+        self.benign_grad = dict()
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -448,7 +448,7 @@ class Client_Krum(Device):
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
         self.all_grads = None
-        self.benign_grad = None
+        self.benign_grad = dict()
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(
@@ -530,7 +530,7 @@ class Client_Fang(Device):
         self.mal_user_grad_mean2 = None
         self.mal_user_grad_std2 = None
         self.all_grads = None
-        self.benign_grad = None
+        self.benign_grad = dict()
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(
@@ -894,7 +894,7 @@ class Client_UAM(Device):
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scale = 3
-        self.benign_grad = None
+        self.benign_grad = dict()
         self.mali_grad = None
         
 
