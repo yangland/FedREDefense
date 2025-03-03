@@ -737,12 +737,12 @@ def weighted_avg_budget_cos(a: torch.Tensor, b: torch.Tensor, budget: float):
     
     left, right = 0.0, 1.0
     best_t = right
-    while right - left > 1e-3:
-        # print("left,right", left, right)
+    while right - left > 1e-7:
+        print("left,right", left, right)
         mid = (left + right) / 2
         c = mid * a + (1 - mid) * b
         cos_d = 1 - cosine_similarity(a, c)
-
+        print(f"cos_d: {cos_d}, budget: {budget}")
         if cos_d <= budget:
             best_t = mid  # Store valid t
             right = mid  # Try a smaller t
@@ -1733,16 +1733,15 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
     return mali_clients, mali_ids
 
 
-def mali_client_get_trial_updates(mali_clients, server, local_epochs, mali_train=False, sync=True):
-    # print("sync", sync, type(sync))
+def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type):
+    # print("train_type"  , train_type)
     server_weights = server.parameter_dict[mali_clients[0].model_name]
-    if not mali_train:
+    if train_type == "benign":
         # malicious clients train on benign datasets
         for client in mali_clients:
-            if sync:
-                client.synchronize_with_server(server)
+            client.synchronize_with_server(server)
             benign_stats = client.compute_weight_benign_update(local_epochs)
-            client.W = client.model.state_dict()
+            client.W = deepcopy(client.model.state_dict())
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
 
         for client in mali_clients:
@@ -1751,16 +1750,17 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, mali_train
             for name in client.W:
                 client.benign_grad[name] = client.W[name].detach() - server_weights[name].detach()
             client.all_grads = all_updates  
-    else:
+    elif train_type == "mali":
         # malicious clients train on malicious datasets
         for client in mali_clients:
-            if sync:
-                client.synchronize_with_server(server)
+            client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(local_epochs)
-            client.W = client.model.state_dict()
+            client.W = deepcopy(client.model.state_dict())
             for name in client.W:
                 client.mali_grad[name] = client.W[name].detach() - server_weights[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
+    else:
+        print("train_type should be either 'benign' or 'mali'")
     return mal_user_grad_mean2, mal_user_grad_std2, all_updates
 
 
@@ -1907,12 +1907,13 @@ class OppositeCrossEntropyLoss(torch.nn.Module):
         return loss.mean()  # Return mean loss
 
 
-def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
+def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):  
+    print("loader length", len(loader))
     model.train()
     # model.parameters need to use 
-    flat_grad_model0 = flat_dict(filter_trainable_state_dict(model0))
-    flat_grad_model1 = flat_dict(filter_trainable_state_dict(model1))
-    grad_ben = (flat_grad_model1 - flat_grad_model0).to(device)
+    flat_model0 = flat_dict(filter_trainable_state_dict(model0))
+    flat_model1 = flat_dict(filter_trainable_state_dict(model1))
+    grad_ben = (flat_model1 - flat_model0).to(device)
     
     losses = []
     running_loss, samples = 0.0, 0
@@ -1951,7 +1952,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             
             # add cos loss 
             w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
-            grad_mail = w - flat_grad_model0
+            grad_mail = w - flat_model0
             target = torch.ones(len(w)).to(device)
             loss_cos = nn.CosineEmbeddingLoss()(grad_ben.unsqueeze(0), grad_mail.unsqueeze(0), target)
             
@@ -1976,9 +1977,17 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             break
         
         last_grad_mail = grad_mail
-        
-    # craft_g = combine_tensors(B=grad_ben, M=grad_mail, budget=budget)
-    craft_g = craft_tensor(B=grad_ben, M1=last_grad_mail, M2=grad_mail, k=budget)
+    #TODO debugging
+    grad_ben_flat = torch.cat([p.view(-1) for p in grad_ben]).to(device)
+    grad_mail_flat = torch.cat([p.view(-1) for p in grad_mail]).to(device)
+    grad_mail_flat_norm = grad_mail_flat / torch.norm(grad_mail_flat, p=2) * torch.norm(grad_ben_flat, p=2)
+    
+    craft_g, best_t, ca_cos_d = weighted_avg_budget_cos(a=grad_ben_flat, b=grad_mail_flat_norm, budget=budget)
+    print("best_t", best_t)
+    print("ca_cos_d", ca_cos_d)
+    
+    #TODO debugging
+    # craft_g = craft_tensor(B=grad_ben, M1=last_grad_mail, M2=grad_mail, k=budget)
     
     restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
     model.load_state_dict(restored_crafted)
@@ -2096,7 +2105,7 @@ def filter_trainable_state_dict(model):
 
 
 def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                 mali_clients, model_name, num_classes, xp, hp, K, beta, lambda_):
+                                 model_name, num_classes, xp, hp, K, beta, lambda_):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
     
     # Synchronize malicious client with the server
@@ -2118,21 +2127,32 @@ def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben
     ben_mean_model = adhoc_model_fn().to(device)
     
     # Restore benign mean weights and load into model
-    benign_mean_w = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.model.state_dict(), malicc.model.state_dict())
+    benign_mean_w = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.server_state, malicc.model.state_dict())
     ben_mean_model.load_state_dict(benign_mean_w)
     
     # Prepare malicious client for attack
-    malicc.sub_loader = malicc.get_sub_dataloader(mult=min(2, malicc.data_multiplier))
-    malicc.reset_lr(new_lr=0.025)
+    # malicc.sub_loader = malicc.get_sub_dataloader(mult=min(2, malicc.data_multiplier))
+    malicc.sub_loader = malicc.get_sub_dataloader(mult=0.1)
+    malicc.reset_lr(new_lr=0.02)
     
     # Compute attack budget
-    budget = max(1e-4, 1 - cos_to_mean)
+    budget = max(1e-4, (1 - cos_to_mean))
     
     # Update malicious weights
-    malicc.compute_weight_mali_update(
-        model0=malicc.model, model1=ben_mean_model, epochs=K, 
-        loader=malicc.sub_loader, beta=beta, budget=budget)
+    # utils.train_rev_w.cos
+    # malicc.compute_weight_mali_update(
+    #     model0=malicc.model, model1=ben_mean_model, epochs=K, 
+    #     loader=malicc.sub_loader, beta=beta, budget=budget)
     
+    train_rev_w_cos(malicc.model, malicc.sub_loader, malicc.optimizer, malicc.scheduler, epochs=1, 
+                    model0=deepcopy(malicc.model), model1=ben_mean_model, beta=beta, budget=budget)
+    
+    acc_results1 = malicc.feedback_on_attack(class_num=10).items()
+    acc_results2 = {"test_accuracy": 0}
+    
+    mali_w2 = deepcopy(malicc.model.state_dict())
+    
+    """    
     # Evaluate attack progress
     acc_results1 = malicc.feedback_on_attack(class_num=10).items()
     
@@ -2147,19 +2167,15 @@ def untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben
         
     # Scale with lambda and update model
     mali_w2 = restore_dict_grad_flat(normalized_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+    # no normalization, no scaling
+    # mali_w2 = restore_dict_grad_dict(mali_grad, malicc.server_state, malicc.model.state_dict())
     model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_w2.values()]).any().item()
     if model_has_nan:
         print("crafted model weight has NA values!")
-    else:
-        print("crafted model weight has NO NA values.")
     
     malicc.model.load_state_dict(mali_w2, strict=False)
     
     # Evaluate final attack results
-    acc_results2 = malicc.feedback_on_attack(class_num=10).items()
+    acc_results2 = malicc.feedback_on_attack(class_num=10).items()"""
     
-    # Distribute malicious model to all malicious clients
-    for client in mali_clients:
-        client.W = malicc.model.state_dict()
-    
-    return budget, acc_results0, acc_results1, acc_results2
+    return budget, acc_results0, acc_results1, acc_results2, mali_w2

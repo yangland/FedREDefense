@@ -8,7 +8,7 @@ hyperparameters04='[{
     "models" : [{"ConvNet" : 100}],
 
     "attack_rate" :  [0.25],
-    "attack_method": ["label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum"],
+    "attack_method": [ "Fang", "MPAF", "Min-Max", "Min-Sum", "label_flip"],
     "participation_rate" : [1],
 
     "alpha" : [0.05],

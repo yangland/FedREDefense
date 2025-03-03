@@ -875,7 +875,7 @@ class Client_UtCos(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        # uniformed attack, no need to process here
+        # uniformed attack, client.W udpated untargeted_cos_budget_attack
         return None
 
         
