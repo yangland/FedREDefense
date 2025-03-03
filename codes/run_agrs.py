@@ -13,6 +13,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from scipy.spatial.distance import cdist, pdist
 import logging
+from our_attack import *
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
@@ -229,56 +230,60 @@ def run_experiment(xp, xp_count, n_experiments):
             
             print("mali clients benign training - finished")
             
-            # if hp["attack_method"] == "UAM":
-            #     UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_ben_mean,
-            #               mal_user_grad_ben_std, mali_ids_all, client_loaders, mali_clients)
-            # elif hp["attack_method"] == "AOP":
-            #     # mali clients get mali grads
-            #     mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
-            #         mali_client_get_trial_updates(mali_clients, server, hp["mali_local_epochs"], 
-            #                                       mali_train=True, sync=hp["sync_mali_mali_train"].lower()=="true")
+            """            
+            if hp["attack_method"] == "UAM":
+                UAM_craft(hp, malicc, server, participating_clients, mal_user_grad_ben_mean,
+                          mal_user_grad_ben_std, mali_ids_all, client_loaders, mali_clients)
+            elif hp["attack_method"] == "AOP":
+                # mali clients get mali grads
+                mal_user_grad_mal_mean, mal_user_grad_mal_std, mal_grad_all = \
+                    mali_client_get_trial_updates(mali_clients, server, hp["mali_local_epochs"], 
+                                                  mali_train=True, sync=hp["sync_mali_mali_train"].lower()=="true")
                 
-            #     print(f"mali clients mali training, obj: {hp['objective']} - finished")
+                print(f"mali clients mali training, obj: {hp['objective']} - finished")
                 
-            #     # Analysis the cos between mali adn benign
-            #     cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos, ben_cos_to_mean = \
-            #         cosine_similarity_mal_ben(mal_grad_all, 
-            #                                     ben_grad_all, 
-            #                                     mal_user_grad_mal_mean, 
-            #                                     mal_user_grad_ben_mean)
+                # Analysis the cos between mali adn benign
+                cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos, ben_cos_to_mean = \
+                    cosine_similarity_mal_ben(mal_grad_all, 
+                                                ben_grad_all, 
+                                                mal_user_grad_mal_mean, 
+                                                mal_user_grad_ben_mean)
                 
-            #     for client in mali_clients:
-            #         client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
-            #         client.ben_cos_mean = ben_cos_mean
-            #         client.ben_cos_med = ben_cos_med
-            #         client.ben_cos_std = ben_cos_std
-            #         client.mali_mean = mal_user_grad_mal_mean
-            #         client.ben_cos_to_mean = ben_cos_to_mean
-            #         client.critical_layer = hp["critical_layer"]
-            #         client.uniformed_att = hp["uniformed_att"].lower()=="true"
+                for client in mali_clients:
+                    client.min_idx_map = dict(zip(mali_ids, min_idx.tolist()))
+                    client.ben_cos_mean = ben_cos_mean
+                    client.ben_cos_med = ben_cos_med
+                    client.ben_cos_std = ben_cos_std
+                    client.mali_mean = mal_user_grad_mal_mean
+                    client.ben_cos_to_mean = ben_cos_to_mean
+                    client.critical_layer = hp["critical_layer"]
+                    client.uniformed_att = hp["uniformed_att"].lower()=="true"
                     
-            #     xp.log({"mali_ben_cos_mat": cos_matrix.detach().cpu().numpy()}, printout=False)
-            #     xp.log({"mali-ben_map": min_idx})
-            #     xp.log({"ben_cos_mean": ben_cos_mean})
-            #     xp.log({"mean_cos_mali_ben": mali_ben_mean_cos})                
-            #     logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}")
+                xp.log({"mali_ben_cos_mat": cos_matrix.detach().cpu().numpy()}, printout=False)
+                xp.log({"mali-ben_map": min_idx})
+                xp.log({"ben_cos_mean": ben_cos_mean})
+                xp.log({"mean_cos_mali_ben": mali_ben_mean_cos})                
+                logger.info(f"AOP min_idx of mali-mali to mali-benign gradients {min_idx}")
+                """
                 
             if hp["attack_method"] == "untargeted_cos":
-                budget, acc_results0, acc_results1, acc_results2, mali_w = \
+                budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_w, final_cos = \
                                 untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                model_name, num_classes, xp, hp, K=4, beta=0.5, lambda_=hp["lambda_"])
+                                model_name, num_classes, xp, hp, K=6, beta=0.5, lambda_=hp["lambda_"])
                 
                 
                 
                 for client in mali_clients:
                     for  name in client.W:
                         client.W[name].data = mali_w[name].detach().clone()
-                
+                    client.model.load_state_dict(mali_w)
                 
                 xp.log({"vali_server": next(iter(acc_results0))[1]})
+                xp.log({"acc_benign_mean": next(iter(acc_benign_mean))[1]})
                 xp.log({"mali_vali_acc": next(iter(acc_results1))[1]})
                 xp.log({"mali_vali_norm_acc": next(iter(acc_results2))[1]})
                 xp.log({"attack_budget": budget})
+                xp.log({"final_cos": final_cos})
                 
                 
         # Both benign and malicous clients compute weight update

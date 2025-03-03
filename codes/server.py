@@ -7,6 +7,8 @@ from utils import kd_loss, DiffAugment
 import sklearn.metrics.pairwise as smp
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from MADS import MADS
+from our_attack import train_rev_w_cos
+from copy import deepcopy
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -307,14 +309,15 @@ class MaliCC(Device):
             param_group['lr'] = new_lr  # Set to your desired value
     
 
-    def get_sub_dataloader(self, mult):
+    def get_sub_dataloader(self, size):
         # Assuming you have a dataset
         dataset_size = len(self.data)
+        assert size<=dataset_size, "size should be less than dataset size"
         indices = list(range(dataset_size))
 
         # Shuffle and select one client's data size * mult
         np.random.shuffle(indices)
-        split = int(dataset_size / self.data_multiplier * mult)
+        split = int(size)
         train_indices = indices[:split]
 
         # Use SubsetRandomSampler
