@@ -9,6 +9,9 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from MADS import MADS
 from our_attack import train_rev_w_cos
 from copy import deepcopy
+import numpy as np
+from collections import defaultdict
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -309,21 +312,51 @@ class MaliCC(Device):
             param_group['lr'] = new_lr  # Set to your desired value
     
 
+    # def get_sub_dataloader(self, size):
+    #     # Assuming you have a dataset
+    #     dataset_size = len(self.data)
+    #     assert size<=dataset_size, "size should be less than dataset size"
+    #     indices = list(range(dataset_size))
+
+    #     # Shuffle and select one client's data size * mult
+    #     np.random.shuffle(indices)
+    #     split = int(size)
+    #     train_indices = indices[:split]
+
+    #     # Use SubsetRandomSampler
+    #     train_sampler = SubsetRandomSampler(train_indices)
+    #     sub_loader = DataLoader(self.data, batch_size=32, sampler=train_sampler)
+    #     return sub_loader
+    
+
+
     def get_sub_dataloader(self, size):
-        # Assuming you have a dataset
         dataset_size = len(self.data)
-        assert size<=dataset_size, "size should be less than dataset size"
-        indices = list(range(dataset_size))
+        assert size <= dataset_size, "size should be less than dataset size"
+        
+        # Group indices by class labels
+        class_indices = defaultdict(list)
+        for idx, (_, label) in enumerate(self.data):  # Assuming dataset returns (data, label)
+            class_indices[label].append(idx)
+        
+        # Determine per-class sample size
+        num_classes = len(class_indices)
+        samples_per_class = size // num_classes
+        
+        selected_indices = []
+        for label, indices in class_indices.items():
+            np.random.shuffle(indices)
+            selected_indices.extend(indices[:samples_per_class])
 
-        # Shuffle and select one client's data size * mult
-        np.random.shuffle(indices)
-        split = int(size)
-        train_indices = indices[:split]
-
+        # Shuffle final selected indices
+        np.random.shuffle(selected_indices)
+        
         # Use SubsetRandomSampler
-        train_sampler = SubsetRandomSampler(train_indices)
+        train_sampler = SubsetRandomSampler(selected_indices)
         sub_loader = DataLoader(self.data, batch_size=32, sampler=train_sampler)
         return sub_loader
+
+    
     
     def search_initial(self, x0, bounds=[[0, 1], [0, 180], [0, 3]], detlta0=0.1, delta_min=1e-5):
         self.x = x0

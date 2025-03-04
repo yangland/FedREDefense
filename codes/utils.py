@@ -22,6 +22,8 @@ from copy import deepcopy
 from torch import linalg as LA
 from torch.utils.data import DataLoader
 import random
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 logger = logging.getLogger("logger")
@@ -287,6 +289,28 @@ def plot_1d(benign_zscores, mali_zscores, mu, var, pi, save_name):
     plt.tight_layout()
     plt.savefig(save_name)
     plt.clf()
+
+def plot_matrix(data, save_name):
+    # Shift all values to be strictly positive
+    min_val = np.min(data)
+    if min_val <= 0:
+        data += abs(min_val) + 1e-6  # Ensure all values are positive
+
+    # Define the save filename
+    save_name = f"{save_name}.png"
+
+    # Create the plot
+    plt.imshow(data, cmap='viridis')
+    plt.colorbar(label="Linear Scale")
+    plt.title('Matrix Plot')
+
+    # Save the figure
+    plt.savefig(save_name, dpi=300, bbox_inches='tight')
+
+    # Close the figure to free memory
+    plt.close()
+
+    print(f"Plot saved as {save_name}")
 
 
 def plot_2d(data, y, real, save_name):
@@ -1401,6 +1425,9 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
     num_clients = len(sources)
     num_malicious_clients = int(malicious * num_clients)
     num_benign_clients = num_clients - num_malicious_clients
+    t1 = time.time()
+    plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}.png')
+    
     clusterer = hdbscan.HDBSCAN(min_cluster_size=num_clients//2 + 1,min_samples=1,allow_single_cluster=True).fit(cos_list)
     logger.info(f"flame clusterer.labels_ {str(clusterer.labels_)}")
     benign_client = []
@@ -1740,7 +1767,6 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type
         for client in mali_clients:
             client.synchronize_with_server(server)
             benign_stats = client.compute_weight_benign_update(local_epochs)
-            client.W = deepcopy(client.model.state_dict())
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
 
         for client in mali_clients:
@@ -1754,7 +1780,7 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type
         for client in mali_clients:
             client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(local_epochs)
-            client.W = deepcopy(client.model.state_dict())
+
             for name in client.W:
                 client.mali_grad[name] = client.W[name].detach() - server_weights[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
@@ -1878,17 +1904,18 @@ def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
 
 
 def mean_cosine_similarity(A):
-    A = torch.tensor(A)
+    A = A.clone().detach().to(device)
     n = A.shape[0]
     cos_sims = []
     
     for i in range(n):
+        # print("i", i)
         for j in range(i + 1, n):
             cos_sim = torch.nn.functional.cosine_similarity(A[i], A[j], dim=0)
             cos_sims.append(cos_sim.item())
     
     cos_sims = torch.tensor(cos_sims)
-    # print("cos_sims", cos_sims)
+    print("cos_sims", cos_sims)
     return cos_sims.mean().item(), torch.median(cos_sims).item(), torch.std(cos_sims, dim=0).item()
 
 

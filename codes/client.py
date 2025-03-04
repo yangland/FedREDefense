@@ -45,7 +45,8 @@ class Client(Device):
         self.model_fn = partial(model_utils.get_model(self.model_name)[
                                 0], num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
-
+        
+        # pointer, auto updated when model is updated
         self.W = {key: value for key, value in self.model.named_parameters()}
 
         self.optimizer_fn = optimizer_fn
@@ -60,6 +61,7 @@ class Client(Device):
         clip_bound, privacy_sigma = None, None
         train_stats = train_op(self.model, self.loader if not loader else loader,
                                self.optimizer, epochs, print_train_loss=print_train_loss)
+        
         return train_stats
 
     def predict_logit(self, x):

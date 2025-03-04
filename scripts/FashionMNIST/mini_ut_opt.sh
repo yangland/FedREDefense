@@ -1,13 +1,13 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='0'
+export CUDA_VISIBLE_DEVICES='4'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"ConvNet" : 12}],
+    "models" : [{"ConvNet" : 20}],
 
-    "attack_rate" :  [ 0.6],
+    "attack_rate" :  [0.4],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
@@ -17,7 +17,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["FedAVG"],
+    "aggregation_mode" : ["flame"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
@@ -32,7 +32,7 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "lambda_": [3]
+    "lambda_": [1]
     }]'
 
 

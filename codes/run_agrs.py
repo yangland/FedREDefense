@@ -188,10 +188,13 @@ def run_experiment(xp, xp_count, n_experiments):
                                     dataset=hp['dataset'], mali_ids=mali_ids_all, data = pooled_mali_ds,
                                     search_algo=hp["search_algo"], obj=hp["objective"])
                     
+                    
                     if hp["attack_method"] == "UAM":
                         # The first attack action to try
                         x0 = [0.5, 0.5, 1]
                         malicc.search_initial(x0)
+                    elif hp["attack_method"] == "untargeted_cos":
+                        malicc.sub_loader = malicc.get_sub_dataloader(size=608)
 
 
     print(clients[0].model)
@@ -268,14 +271,10 @@ def run_experiment(xp, xp_count, n_experiments):
                 
             if hp["attack_method"] == "untargeted_cos":
                 budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_w, final_cos = \
-                                untargeted_cos_budget_attack(malicc, server, ben_grad_all, mal_user_grad_ben_mean, 
+                                untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
                                 model_name, num_classes, xp, hp, K=6, beta=0.5, lambda_=hp["lambda_"])
                 
-                
-                
                 for client in mali_clients:
-                    for  name in client.W:
-                        client.W[name].data = mali_w[name].detach().clone()
                     client.model.load_state_dict(mali_w)
                 
                 xp.log({"vali_server": next(iter(acc_results0))[1]})
