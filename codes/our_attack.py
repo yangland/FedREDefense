@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 from copy import deepcopy
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
                                  model_name, num_classes, xp, hp, K, beta, lambda_):

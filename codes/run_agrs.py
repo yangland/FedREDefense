@@ -50,7 +50,7 @@ args = parser.parse_args()
 curr_time = datetime.datetime.now().strftime('%b.%d_%H.%M.%S')
 
 # args.RESULTS_PATH = os.path.join(args.RESULTS_PATH, str(random.randint(0,1000)))
-args.RESULTS_PATH = os.path.join(args.RESULTS_PATH, curr_time)
+args.RESULTS_PATH = os.path.join(args.RESULTS_PATH, curr_time )
 if not os.path.exists(args.RESULTS_PATH):
     os.makedirs(args.RESULTS_PATH)
 
@@ -79,7 +79,7 @@ def detection_metric_overall_flame(real_label, label_pred):
     return accurate, fp, fn, nobyz, nosample
 
 
-def run_experiment(xp, xp_count, n_experiments):
+def run_experiment(xp, xp_count, n_experiments, exp_id):
     t0 = time.time()
     
     logger.addHandler(logging.FileHandler(filename=f'{args.RESULTS_PATH}/log_{xp.hyperparameters["log_id"]}.txt'))
@@ -350,7 +350,7 @@ def run_experiment(xp, xp_count, n_experiments):
             test_accs.append(stats['test_accuracy'])
 
             # Save results to Disk
-            xp.save_to_disc(path=args.RESULTS_PATH, name="logfiles")
+            xp.save_to_disc(path=args.RESULTS_PATH, name=f"logfile_{exp_id}")
             e = int((time.time()-t1)/c_round *
                     (hp['communication_rounds']-c_round))
             print("Remaining Time (approx.):", '{:02d}:{:02d}:{:02d}'.format(e // 3600, (e % 3600 // 60), e % 60),
@@ -359,6 +359,8 @@ def run_experiment(xp, xp_count, n_experiments):
     # Save model to disk
     server.save_model(path=args.CHECKPOINT_PATH, name=hp["save_model"])
 
+    logger.info(f"Saved results to: {args.RESULTS_PATH}/logfile_{exp_id}")
+    
     # Delete objects to free up GPU memory
     del server
     clients.clear()
@@ -373,7 +375,7 @@ def run():
 
     print("Running {} Experiments..\n".format(len(experiments)))
     for xp_count, xp in enumerate(experiments):
-        run_experiment(xp, xp_count, len(experiments))
+        run_experiment(xp, xp_count, len(experiments), exp_id = xp.hyperparameters["log_id"])
 
 
 if __name__ == "__main__":

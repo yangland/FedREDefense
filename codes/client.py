@@ -13,7 +13,7 @@ import os
 import math
 from math import sqrt
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
 class Device(object):
     def __init__(self, loader):
@@ -25,9 +25,9 @@ class Device(object):
 
     def save_model(self, path=None, name=None, verbose=True):
         if name:
-            torch.save(self.model.state_dict(), path+name)
+            torch.save(self.model.state_dict(), str(path)+str(name))
             if verbose:
-                print("Saved model to", path+name)
+                print("Saved model to", str(path)+str(name))
 
     def load_model(self, path=None, name=None, verbose=True):
         if name:

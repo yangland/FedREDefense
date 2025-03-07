@@ -47,7 +47,7 @@ def reduce_params(sources, weights):
 
 class Synthesizer:
     def __init__(self, network, args):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         self.dataset =args.dataset
         self.batch_syn = args.batch_syn
         self.save_path = args.RESULTS_PATH

@@ -12,7 +12,7 @@ hyperparameters04='[{
     "participation_rate" : [1],
 
     "alpha" : [0.05],
-    "communication_rounds" : [200],
+    "communication_rounds" : [2],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],

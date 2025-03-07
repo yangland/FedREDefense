@@ -1425,8 +1425,8 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
     num_clients = len(sources)
     num_malicious_clients = int(malicious * num_clients)
     num_benign_clients = num_clients - num_malicious_clients
-    t1 = time.time()
-    plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}.png')
+    # t1 = time.time()
+    # plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}')
     
     clusterer = hdbscan.HDBSCAN(min_cluster_size=num_clients//2 + 1,min_samples=1,allow_single_cluster=True).fit(cos_list)
     logger.info(f"flame clusterer.labels_ {str(clusterer.labels_)}")

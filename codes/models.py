@@ -4,7 +4,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torchvision.models.resnet import ResNet, BasicBlock, conv3x3, conv1x1
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
 channel_dict =  {
     "cifar10": 3,

@@ -12,7 +12,7 @@ from copy import deepcopy
 import numpy as np
 from collections import defaultdict
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
 
 def cos_sim_nd(tensor1, tensor2):
@@ -115,6 +115,7 @@ class Server(Device):
                                               0], num_classes=num_classes, dataset=dataset)().to(device) for model_name in model_names}
 
         self.models = list(self.model_dict.values())
+        self.model = self.models[0]
         self.fltrust_rootds = None
 
     def evaluate_ensemble(self):

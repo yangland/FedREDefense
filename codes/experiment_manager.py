@@ -106,7 +106,13 @@ class Experiment():
                 
     def save_to_disc(self, path, name):
         if path:
-            save_results(self.to_dict(), os.path.join(path, name), 'xp_'+str(self.hyperparameters['log_id']))
+            save_results(self.to_dict(), 
+                         os.path.join(path, name), 
+                         'xp_'+ \
+                            str(self.hyperparameters["attack_method"])+ \
+                            str(self.hyperparameters["aggregation_mode"]) + \
+                            str(self.hyperparameters["alpha"])
+                         )
 
 
 
