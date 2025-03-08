@@ -19,7 +19,7 @@ hyperparameters04='[{
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
     "aggregation_mode" : ["flame", "krum"],
     "pretrained" : [null],
-    "save_model" : [null],
+    "save_model" : [1],
     "log_frequency" : [1],
     "log_path" : ["new_noniid/"],
     "robustLR_threshold" : [4] ,
