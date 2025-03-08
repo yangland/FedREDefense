@@ -87,7 +87,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         logger.removeHandler(handler)
         handler.close()
     
-    print("args.SUBRESULTS_PATH", args.SUBRESULTS_PATH)
+    # print("args.SUBRESULTS_PATH", args.SUBRESULTS_PATH)
     
     logger.addHandler(logging.FileHandler(filename=f'{args.SUBRESULTS_PATH}/log_{xp.hyperparameters["log_id"]}.txt'))
     logger.addHandler(logging.StreamHandler())
