@@ -186,10 +186,13 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                     import pdb
                     pdb.set_trace()
                 
+                mali_ids_all = list(range(
+                        math.ceil((1 - hp["attack_rate"])*len(client_loaders)), len(client_loaders))) 
+                logger.info(f"mali client id: {mali_ids_all}")     
+                
                 if hp["attack_method"] in ["AOP", "UAM", "untargeted_cos"]:
                     # initialize the UAM malicious group's command center
-                    mali_ids_all = list(range(
-                        math.ceil((1 - hp["attack_rate"])*len(client_loaders)), len(client_loaders)))
+
                     pooled_mali_ds = ConcatDataset(
                         [client_data_subsets[i] for i in mali_ids_all])
                     pooled_mali_dl = torch.utils.data.DataLoader(
@@ -299,7 +302,6 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         # Both benign and malicous clients compute weight update
         
         for client in participating_clients:
-            # print("client.id",client.id)
             client.synchronize_with_server(server)
             train_stats = client.compute_weight_update(hp["local_epochs"])
 

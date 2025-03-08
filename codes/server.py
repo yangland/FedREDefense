@@ -194,12 +194,17 @@ class Server(Device):
         else:
             for model_name in unique_client_model_names:
                 print("model_name", model_name)
-                all_w_flat = torch.stack([flat_dict(client.W) for client in clients if client.model_name == model_name])
-                _, krum_candidate_indices = reduce_multi_krum(all_updates = all_w_flat, 
-                                                            n_attackers = math.floor(len(clients)*mali_ratio), 
-                                                            multi_k=True)
+                # all_w_flat = torch.stack([flat_dict(client.W) for client in clients if client.model_name == model_name])
+                # _, krum_candidate_indices = reduce_multi_krum(all_updates = all_w_flat, 
+                #                                             n_attackers = math.floor(len(clients)*mali_ratio), 
+                #                                             multi_k=True)
+                krum_candidate_indices = reduce_krum(target=self.parameter_dict[model_name], 
+                                                     sources=[client.W for client in clients if client.model_name == model_name], 
+                                                     mali_ratio=mali_ratio,
+                                                     multi_k=True)
+                
                 print("krum_candidate_indices", krum_candidate_indices)
-                krum_candidates = [clients[i] for i in krum_candidate_indices]
+                krum_candidates = [clients[i] for i in set(krum_candidate_indices)]
                 
                 for model_name in unique_client_model_names:
                     reduce_average(target=self.parameter_dict[model_name], sources=[

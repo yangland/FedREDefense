@@ -1271,8 +1271,7 @@ def flat_dict(grad_dict, layer_list=None):
     user_flatten_grad = torch.cat(user_flatten_grad)
     return user_flatten_grad
 
-def reduce_krum(target, sources, mali_ratio):
-    import math
+def reduce_krum(target, sources, mali_ratio, multi_k=True):
     krum_mal_num = math.ceil(mali_ratio * len(sources)) + 1
     user_num = len(sources)
     # user_flatten_grad = []
@@ -1300,13 +1299,17 @@ def reduce_krum(target, sources, mali_ratio):
     sm_user_scores = torch.sum(topk_user_scores, dim=1)
 
     # users with smallest score is selected as update gradient
-    u_score, select_ui = torch.topk(sm_user_scores, k=1, largest=False)
+    u_score, select_ui = torch.topk(sm_user_scores, k=krum_mal_num, largest=False)
     select_ui = select_ui.cpu().numpy()
-    select_ui = select_ui[0]
-    # print(select_ui)
-    # import pdb; pdb.set_trace()
-    for name in target:
-        target[name].data = sources[select_ui][name].detach().clone()
+    
+    if not multi_k:
+        select_ui = select_ui[0]
+
+        for name in target:
+            target[name].data = sources[select_ui][name].detach().clone()
+    else:
+        # multi k's FedAvg
+        return select_ui
 
 
 def reduce_residual(source_1, source_2):
