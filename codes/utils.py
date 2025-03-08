@@ -1304,12 +1304,13 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     
     if not multi_k:
         select_ui = select_ui[0]
-
         for name in target:
             target[name].data = sources[select_ui][name].detach().clone()
-    else:
-        # multi k's FedAvg
-        return select_ui
+
+    # multi k's FedAvg
+    return select_ui
+
+
 
 
 def reduce_residual(source_1, source_2):

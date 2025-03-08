@@ -305,6 +305,13 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             client.synchronize_with_server(server)
             train_stats = client.compute_weight_update(hp["local_epochs"])
 
+        def log_krum_selection(mode, multi_k):
+            selected_clients_ids = server.krum(participating_clients, hp["attack_rate"], multi_k=multi_k)
+            malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids)
+            mali_select_p = (malicious_count / len(participating_clients))
+            xp.log({f"{mode}_select_percentage": mali_select_p})
+
+
         # server aggregation
         if hp["aggregation_mode"] == "FedAVG":
             server.fedavg(participating_clients)
@@ -317,9 +324,9 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         elif hp["aggregation_mode"] == "trmean":
             server.TrimmedMean(participating_clients, hp["attack_rate"])
         elif hp["aggregation_mode"] == "krum":
-            server.krum(participating_clients, hp["attack_rate"], multi_k=False)
+            log_krum_selection("single_Krum", multi_k=False)
         elif hp["aggregation_mode"] == "multi-krum":
-            server.krum(participating_clients, hp["attack_rate"], multi_k=True)
+            log_krum_selection("Multi_Krum", multi_k=True)
         elif hp["aggregation_mode"] == "RLR":
             server.RLR(participating_clients, hp["robustLR_threshold"])
         elif hp["aggregation_mode"] == "flame":
@@ -383,6 +390,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     del server
     clients.clear()
     torch.cuda.empty_cache()
+
+
 
 
 def run():

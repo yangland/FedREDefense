@@ -189,7 +189,7 @@ class Server(Device):
         if not multi_k:
             # run as single Krum
             for model_name in unique_client_model_names:
-                reduce_krum(target=self.parameter_dict[model_name], sources=[
+                krum_candidate_indices = reduce_krum(target=self.parameter_dict[model_name], sources=[
                             client.W for client in clients if client.model_name == model_name], mali_ratio=mali_ratio)
         else:
             for model_name in unique_client_model_names:
@@ -209,7 +209,8 @@ class Server(Device):
                 for model_name in unique_client_model_names:
                     reduce_average(target=self.parameter_dict[model_name], sources=[
                            client.W for client in krum_candidates])
-            
+        return krum_candidate_indices
+
             
     def normbound(self, clients, mali_ratio):
         unique_client_model_names = np.unique(
