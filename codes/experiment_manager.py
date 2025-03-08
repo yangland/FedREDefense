@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 def save_results(results_dict, path, name, verbose=True):
     # print("results_dict", results_dict)
     results_numpy = {key : np.array(value) for key, value in results_dict.items()}
-
+    print("save_results path", path)
     if not os.path.exists(path):
         os.makedirs(path)
     np.savez(path+name, **results_numpy) 
@@ -109,8 +109,8 @@ class Experiment():
             save_results(self.to_dict(), 
                          os.path.join(path, name), 
                          'xp_'+ \
-                            str(self.hyperparameters["attack_method"])+ \
-                            str(self.hyperparameters["aggregation_mode"]) + \
+                            str(self.hyperparameters["attack_method"])+ '_' + \
+                            str(self.hyperparameters["aggregation_mode"]) + '_' + \
                             str(self.hyperparameters["alpha"])
                          )
 

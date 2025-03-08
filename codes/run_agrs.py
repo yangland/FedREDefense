@@ -50,9 +50,9 @@ args = parser.parse_args()
 curr_time = datetime.datetime.now().strftime('%b.%d_%H.%M.%S')
 
 # args.RESULTS_PATH = os.path.join(args.RESULTS_PATH, str(random.randint(0,1000)))
-args.RESULTS_PATH = os.path.join(args.RESULTS_PATH, curr_time )
-if not os.path.exists(args.RESULTS_PATH):
-    os.makedirs(args.RESULTS_PATH)
+args.SUBRESULTS_PATH = os.path.join(args.RESULTS_PATH, curr_time)
+if not os.path.exists(args.SUBRESULTS_PATH):
+    os.makedirs(args.SUBRESULTS_PATH)
 
 
 def detection_metric_per_round(real_label, label_pred):
@@ -82,7 +82,14 @@ def detection_metric_overall_flame(real_label, label_pred):
 def run_experiment(xp, xp_count, n_experiments, exp_id):
     t0 = time.time()
     
-    logger.addHandler(logging.FileHandler(filename=f'{args.RESULTS_PATH}/log_{xp.hyperparameters["log_id"]}.txt'))
+    # Remove existing handlers to prevent duplicate logging
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+    
+    print("args.SUBRESULTS_PATH", args.SUBRESULTS_PATH)
+    
+    logger.addHandler(logging.FileHandler(filename=f'{args.SUBRESULTS_PATH}/log_{xp.hyperparameters["log_id"]}.txt'))
     logger.addHandler(logging.StreamHandler())
     logger.setLevel(logging.DEBUG)
     logger.info(f"Running experiment {xp_count+1} of total {n_experiments} \n")
@@ -350,16 +357,17 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             test_accs.append(stats['test_accuracy'])
 
             # Save results to Disk
-            xp.save_to_disc(path=args.RESULTS_PATH, name=f"logfile_{exp_id}")
+            xp.save_to_disc(path=args.SUBRESULTS_PATH, name=str(exp_id))
             e = int((time.time()-t1)/c_round *
                     (hp['communication_rounds']-c_round))
             print("Remaining Time (approx.):", '{:02d}:{:02d}:{:02d}'.format(e // 3600, (e % 3600 // 60), e % 60),
                   "[{:.2f}%]\n".format(c_round/hp['communication_rounds']*100))
             logger.info(f"exp total running time: {datetime.timedelta(seconds=(time.time() - t0))}")
+    
     # Save model to disk
-    server.save_model(path=args.CHECKPOINT_PATH, name=hp["save_model"])
+    server.save_model(path=args.SUBRESULTS_PATH, name=str(exp_id) + ".pt", if_save=hp["save_model"])
 
-    logger.info(f"Saved results to: {args.RESULTS_PATH}/logfile_{exp_id}")
+    logger.info(f"Saved results to: {args.SUBRESULTS_PATH}/logfile_{exp_id}")
     
     # Delete objects to free up GPU memory
     del server
