@@ -5,19 +5,19 @@ export CUDA_VISIBLE_DEVICES='0'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"ConvNet" : 10}], 
+    "models" : [{"ConvNet" : 100}], 
 
-    "attack_rate" :  [ 0, 0.25],
+    "attack_rate" :  [ 0.4, 0.25, 0],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
     "alpha" : [0.5],
-    "communication_rounds" : [2],
+    "communication_rounds" : [500],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : [ "krum"],
+    "aggregation_mode" : [ "flame", "krum"],
     "pretrained" : [null],
     "save_model" : [1],
     "log_frequency" : [1],
