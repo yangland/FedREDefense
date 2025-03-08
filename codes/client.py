@@ -395,41 +395,9 @@ def compute_lambda(all_updates, model_re, n_attackers):
     return (term_1 + max_wre_dist)
 
 
-def score(gradient, v, nbyz):
-    num_neighbours = v.shape[0] - 2 - nbyz
-    sorted_distance = torch.sort(torch.sum((v - gradient) ** 2, axis=1))[0]
-    return torch.sum(sorted_distance[1:(1+num_neighbours)]).item()
 
 
-def multi_krum(all_updates, n_attackers, multi_k=False):
-    nusers = all_updates.shape[0]
-    candidates = []
-    candidate_indices = []
-    remaining_updates = all_updates.clone()
-    all_indices = torch.arange(len(all_updates))
-    candidates = None
 
-    while len(remaining_updates) > 2 * n_attackers + 2:
-        scores = torch.tensor(
-            [score(gradient, remaining_updates, n_attackers) for gradient in remaining_updates])
-        min_idx = int(scores.argmin(axis=0).item())
-        candidate_indices.append(min_idx)
-        candidates = torch.reshape(remaining_updates[min_idx].clone(), shape=(1, -1)) if not isinstance(
-            candidates, torch.Tensor) else torch.cat((candidates, torch.reshape(remaining_updates[min_idx].clone(), shape=(1, -1))), dim=0)
-        if min_idx == remaining_updates.shape[0] - 1:
-            remaining_updates = remaining_updates[:min_idx, :]
-        elif min_idx == 0:
-            remaining_updates = remaining_updates[min_idx + 1:, :]
-        else:
-            remaining_updates = torch.cat(
-                (remaining_updates[:min_idx, :], remaining_updates[min_idx + 1:, :]), dim=0)
-        if not multi_k:
-            break
-    aggregate = torch.mean(candidates, axis=0)
-    if multi_k == False:
-        return aggregate, candidate_indices[0]
-    else:
-        return aggregate, candidate_indices
 
 
 class Client_Krum(Device):
@@ -463,6 +431,7 @@ class Client_Krum(Device):
         self.model.load_state_dict(server_state, strict=False)
 
     def compute_weight_update(self, epochs=1, loader=None):
+        print("client krum compute_weight_update")
         all_updates = torch.Tensor(np.array(self.all_grads)).cuda()
         model_re = torch.mean(all_updates, dim=0)
         if len(all_updates) != 1:
@@ -474,9 +443,10 @@ class Client_Krum(Device):
             mal_update = []
             while lamda > threshold:
                 mal_update = (-lamda * deviation)
-                agg_grads, krum_candidate = multi_krum(
+                agg_grads, krum_candidate = reduce_multi_krum(
                     all_updates, len(all_updates), multi_k=False)
                 if krum_candidate < len(all_updates):
+                    print("krum_candidate", krum_candidate)
                     break
                 else:
                     mal_update = []

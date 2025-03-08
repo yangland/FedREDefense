@@ -175,6 +175,10 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 elif hp["attack_method"] == "AOP":
                     clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i,
                                    num_classes=num_classes, dataset=hp['dataset'], obj=hp['objective']))
+                # elif hp["attack_method"] == "krum":
+                #     print("adding Krum client")
+                #     clients.append(Client_Krum(model_name, optimizer_fn, loader,
+                #                    idnum=i, num_classes=num_classes, dataset=hp['dataset']))
                 elif hp["attack_method"] == "untargeted_cos":
                     clients.append(Client_UtCos(model_name, optimizer_fn, loader, idnum=i,
                                    num_classes=num_classes, dataset=hp['dataset']))
@@ -293,7 +297,9 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 
                 
         # Both benign and malicous clients compute weight update
+        
         for client in participating_clients:
+            # print("client.id",client.id)
             client.synchronize_with_server(server)
             train_stats = client.compute_weight_update(hp["local_epochs"])
 
@@ -309,7 +315,9 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         elif hp["aggregation_mode"] == "trmean":
             server.TrimmedMean(participating_clients, hp["attack_rate"])
         elif hp["aggregation_mode"] == "krum":
-            server.krum(participating_clients, hp["attack_rate"])
+            server.krum(participating_clients, hp["attack_rate"], multi_k=False)
+        elif hp["aggregation_mode"] == "multi-krum":
+            server.krum(participating_clients, hp["attack_rate"], multi_k=True)
         elif hp["aggregation_mode"] == "RLR":
             server.RLR(participating_clients, hp["robustLR_threshold"])
         elif hp["aggregation_mode"] == "flame":

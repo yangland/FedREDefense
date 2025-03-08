@@ -2041,5 +2041,38 @@ def filter_trainable_state_dict(model):
     param_names = {name for name, _ in model.named_parameters()}
     return {k: v for k, v in model.state_dict().items() if k in param_names}
 
+def krum_score(gradient, v, nbyz):
+    num_neighbours = v.shape[0] - 2 - nbyz
+    sorted_distance = torch.sort(torch.sum((v - gradient) ** 2, axis=1))[0]
+    return torch.sum(sorted_distance[1:(1+num_neighbours)]).item()
 
 
+def reduce_multi_krum(all_updates, n_attackers, multi_k=True):
+    nusers = all_updates.shape[0]
+    candidates = []
+    candidate_indices = []
+    remaining_updates = all_updates.clone()
+    all_indices = torch.arange(len(all_updates))
+    candidates = None
+
+    while len(remaining_updates) > 2 * n_attackers + 2:
+        scores = torch.tensor(
+            [krum_score(gradient, remaining_updates, n_attackers) for gradient in remaining_updates])
+        min_idx = int(scores.argmin(axis=0).item())
+        candidate_indices.append(min_idx)
+        candidates = torch.reshape(remaining_updates[min_idx].clone(), shape=(1, -1)) if not isinstance(
+            candidates, torch.Tensor) else torch.cat((candidates, torch.reshape(remaining_updates[min_idx].clone(), shape=(1, -1))), dim=0)
+        if min_idx == remaining_updates.shape[0] - 1:
+            remaining_updates = remaining_updates[:min_idx, :]
+        elif min_idx == 0:
+            remaining_updates = remaining_updates[min_idx + 1:, :]
+        else:
+            remaining_updates = torch.cat(
+                (remaining_updates[:min_idx, :], remaining_updates[min_idx + 1:, :]), dim=0)
+        if not multi_k:
+            break
+    aggregate = torch.mean(candidates, axis=0)
+    if multi_k == False:
+        return aggregate, candidate_indices[0]
+    else:
+        return aggregate, candidate_indices
