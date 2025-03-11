@@ -299,7 +299,12 @@ class Server(Device):
                              sources=[client.W for client in clients if client.model_name == model_name],
                              server_update= server_update)
 
-
+    def rfa(self, clients):
+        unique_client_model_names = np.unique(
+            [client.model_name for client in clients])
+        for model_name in unique_client_model_names:
+            reduce_rfa(target=self.parameter_dict[model_name],
+                             sources=[client.W for client in clients if client.model_name == model_name])        
 
 # add a special Server class malicious command center
 class MaliCC(Device):

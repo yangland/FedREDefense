@@ -588,7 +588,8 @@ class Client_MPAF(Device):
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.scale = 3
+        # per paper, the scale selection are: 10, 1000, 1e6
+        self.scale = 1e6
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()

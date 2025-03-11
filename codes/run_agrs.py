@@ -335,6 +335,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             xp.log({"flame_mali_select_precentage": mali_select_p})
         elif hp["aggregation_mode"] == "foolsgold":
             server.foolsgold(participating_clients)
+        elif hp["aggregation_mode"] == "rfa":
+            server.rfa(participating_clients)
         elif hp["aggregation_mode"] == "fltrust":
             server.fltrust(participating_clients, root_loader=fltrust_root_dl, epochs=hp['local_epochs'])
         else:
