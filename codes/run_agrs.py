@@ -102,6 +102,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     args.channel = channel_dict[hp['dataset']]
     args.imsize = imsize_dict[hp['dataset']]
     args.dataset = hp['dataset']
+    mali_ids_all = []
 
     logger.info(f"num classes {num_classes}, dsa mode {hp.get('dsa', True)}")
     model_names = [model_name for model_name, k in hp["models"].items()
@@ -307,7 +308,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
 
         def log_krum_selection(mode, multi_k):
             selected_clients_ids = server.krum(participating_clients, hp["attack_rate"], multi_k=multi_k)
-            malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids)
+            malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids_all)
             mali_select_p = (malicious_count / len(participating_clients))
             xp.log({f"{mode}_select_percentage": mali_select_p})
 
