@@ -902,7 +902,12 @@ def restore_dict_grad_dict(grad_dict, server_w, model_dict):
     state_dict_keys = set(model_dict.keys())
     param_dict_keys = set(server_w.keys())
     
+    # print("state_dict_keys", state_dict_keys)
+    # print("param_dict_keys", param_dict_keys)
+    
     missing_keys = state_dict_keys - param_dict_keys    
+    
+    # print("missing_keys", missing_keys)
     
     restored_w = {}
 
@@ -2253,3 +2258,9 @@ _methods = {
     'minimize': minimize_method,
     'weiszfeld': weiszfeld_method,
 }
+
+def state_dict_to_w(sd, w):
+    # convert the state dict to named parameter dict
+    new_w = {k: v for k, v in sd.items() if k in w}
+    
+    return new_w

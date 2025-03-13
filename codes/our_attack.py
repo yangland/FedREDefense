@@ -5,7 +5,7 @@ import models as model_utils
 from utils import restore_dict_grad_dict, cos_pairs_and_mean, \
  flat_dict, filter_trainable_state_dict,  restore_dict_grad_flat, \
      cos_dist_w, eval_epoch, cos_dist_w, weighted_avg_budget_cos, \
-         get_model_update, parameters_dict_to_vector, craft_tensor
+         get_model_update, parameters_dict_to_vector, craft_tensor, state_dict_to_w
 from torch import nn
 from torch.nn import functional as F
 from copy import deepcopy
@@ -38,8 +38,10 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     # Initialize benign mean model
     ben_mean_model = adhoc_model_fn().to(device)
     # Restore benign mean weights and load into model
-    benign_mean_w = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.server_state, malicc.model.state_dict())
-    ben_mean_model.load_state_dict(benign_mean_w)
+    benign_mean_sd = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.server_w, malicc.model.state_dict())
+    ben_mean_model.load_state_dict(benign_mean_sd)
+    benign_mean_w = state_dict_to_w(sd = benign_mean_sd, w = malicc.server_w)
+    
     cos_mean, cos_med, cos_std, cos_to_mean = cos_pairs_and_mean(all_w, benign_mean_w)
     xp.log({"cos_mean": cos_mean, "cos_med": cos_med, "cos_std": cos_std, "mean_cos_to_mean": cos_to_mean})
     
@@ -51,7 +53,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     budget = max(1e-5, (1 - cos_mean))
     
     # malicc model load benign mean weights
-    malicc.model.load_state_dict(benign_mean_w)
+    malicc.model.load_state_dict(benign_mean_sd)
     
     acc_benign_mean = malicc.feedback_on_attack(class_num=10).items()
     

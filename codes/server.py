@@ -333,6 +333,7 @@ class MaliCC(Device):
         self.sub_loader = None
         self.data = data
         self.server_state = None
+        self.server_w = None
 
     def reset_lr(self, new_lr):
         self.scheduler._step_count = 0
@@ -422,6 +423,7 @@ class MaliCC(Device):
             
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
+        self.server_w = {key: value for key, value in server.model_dict[self.model_name].named_parameters()}
         self.model.load_state_dict(self.server_state, strict=False)
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
