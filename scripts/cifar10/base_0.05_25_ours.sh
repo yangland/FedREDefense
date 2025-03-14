@@ -4,8 +4,8 @@ cmdargs=$1
 export CUDA_VISIBLE_DEVICES='6'
 hyperparameters04='[{
     "random_seed" : [4],
-    "dataset" : ["cifar10"],
-    "models" : [{"resnet18" : 20}],
+    "dataset" : ["mnist"],
+    "models" : [{"ConvNet" : 20}],
 
     "attack_rate" :  [0.25],
     "attack_method": ["untargeted_cos"],

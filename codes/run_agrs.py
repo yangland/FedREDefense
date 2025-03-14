@@ -24,17 +24,20 @@ channel_dict = {
     "cifar10": 3,
     "cinic10": 3,
     "fmnist": 1,
+    "mnist": 1,
 }
 imsize_dict = {
     "cifar10": (32, 32),
     "cinic10": (32, 32),
     "fmnist": (28, 28),
+    "mnist": (28, 28),
 }
 
 class_num_dict = {
     "cifar10": 10,
     "cinic10": 10,
-    "fmnist" : 10,   
+    "fmnist" : 10,
+    "mnist" : 10,
 }
 
 parser = argparse.ArgumentParser()
@@ -97,7 +100,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     logger.info("Exp parameters:")
     for key, value in hp.items():
         logger.info(f"{key}:{value}")
-    num_classes = {"fmnist": 10, "cifar10": 10, "cinic10": 10}[hp["dataset"]]
+    num_classes = {"fmnist": 10, "cifar10": 10, "cinic10": 10, "mnist": 10}[hp["dataset"]]
 
     args.channel = channel_dict[hp['dataset']]
     args.imsize = imsize_dict[hp['dataset']]
@@ -176,10 +179,6 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 elif hp["attack_method"] == "AOP":
                     clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i,
                                    num_classes=num_classes, dataset=hp['dataset'], obj=hp['objective']))
-                # elif hp["attack_method"] == "krum":
-                #     print("adding Krum client")
-                #     clients.append(Client_Krum(model_name, optimizer_fn, loader,
-                #                    idnum=i, num_classes=num_classes, dataset=hp['dataset']))
                 elif hp["attack_method"] == "untargeted_cos":
                     clients.append(Client_UtCos(model_name, optimizer_fn, loader, idnum=i,
                                    num_classes=num_classes, dataset=hp['dataset']))

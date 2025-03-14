@@ -78,6 +78,15 @@ def get_fmnist(path):
 
     return train_data, test_data
 
+def get_mnist(path):
+    transforms = torchvision.transforms.Compose([
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize((0.1307,), (0.3081,))
+    ])
+    train_data = torchvision.datasets.MNIST(root=path+"MNIST", train=True, download=True, transform=transforms)
+    test_data = torchvision.datasets.MNIST(root=path+"MNIST", train=False, download=True, transform=transforms)
+
+    return train_data, test_data
 
 def read_dir(data_dir):
     clients = []
@@ -120,7 +129,10 @@ def read_data(train_data_dir, test_data_dir):
     return train_clients, train_groups, train_data, test_data
 
 def get_data(dataset, path):
-  return { "fmnist": get_fmnist, "cifar10" : get_cifar10, "cinic10" : get_cinic10}[dataset](path)
+  return {"fmnist": get_fmnist, 
+          "cifar10" : get_cifar10,
+          "cinic10" : get_cinic10, 
+          "mnist": get_mnist}[dataset](path)
 
 
 def get_loaders(train_data, test_data, n_clients=10, alpha=0, batch_size=128, n_data=None, num_workers=0, seed=0):
