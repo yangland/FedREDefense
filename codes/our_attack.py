@@ -13,7 +13,7 @@ from copy import deepcopy
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                 model_name, num_classes, xp, hp, K, beta, lambda_):
+                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
     adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
     
@@ -47,7 +47,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     
     # Prepare malicious client for attack
     # malicc.sub_loader = malicc.get_sub_dataloader(mult=min(2, malicc.data_multiplier))
-    malicc.reset_lr(new_lr=0.005)
+    malicc.reset_lr(new_lr=adv_lr)
     
     # Compute attack budget
     budget = max(1e-5, (1 - cos_mean))
@@ -59,7 +59,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     
     # Update malicious weights
     train_rev_w_cos(malicc.model, malicc.sub_loader, malicc.optimizer, malicc.scheduler, epochs=K, 
-                    model0=model0, model1=ben_mean_model, beta=0.5, budget=budget)
+                    model0=model0, model1=ben_mean_model, beta=beta_, budget=budget)
 
     # Evaluate attack progress
     acc_results1 = malicc.feedback_on_attack(class_num=10).items()
@@ -74,20 +74,26 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
         print("crafted normalized_mali_flat has NA values!")
         
     # Scale with lambda and update model
-    mali_w2 = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+    mali_sd2 = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
 
-    model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_w2.values()]).any().item()
+    model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_sd2.values()]).any().item()
     if model_has_nan:
         print("crafted model weight has NA values!")
     cos_d = nn.CosineSimilarity(dim=0, eps=1e-9)
-    final_cos = 1 - cos_d(flat_dict(benign_mean_w),flat_dict(mali_w2)).item()
+    final_cos = 1 - cos_d(flat_dict(malicc.model.state_dict()),flat_dict(mali_sd2)).item()
     
-    malicc.model.load_state_dict(mali_w2, strict=False)
+    malicc.model.load_state_dict(mali_sd2, strict=False)
     
     # Evaluate final attack results
     acc_results2 = malicc.feedback_on_attack(class_num=10).items()
     
-    return budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_w2, float(final_cos)
+    return budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd2, float(final_cos)
+
+
+def stable_log_cosh_cross_entropy_loss(preds, targets):
+    ce_loss = F.cross_entropy(preds, targets, reduction='none')  # Standard CE loss
+    stable_loss = torch.abs(ce_loss) + torch.log1p(torch.exp(-2 * torch.abs(ce_loss))) - torch.log(torch.tensor(2.0))
+    return torch.mean(stable_loss)
 
 
 def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
@@ -121,12 +127,20 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             loss_cos = nn.CosineEmbeddingLoss()(flat_model0.unsqueeze(0), w.unsqueeze(0), target)
             
             # combindation loss
-            loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
+            # loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
+            
+            scaler = torch.amp.GradScaler()
+            with torch.amp.autocast(device_type=device):
+                loss_obj = (1-beta) * (- stable_log_cosh_cross_entropy_loss(model(x), y)) + beta * loss_cos
+            
             # only negative loss
             # loss_obj = loss_oppo_ce 
             
-            loss_obj.backward()
-            optimizer.step()
+            scaler.scale(loss_obj).backward()
+            scaler.step(optimizer)
+            
+            # loss_obj.backward()
+            # optimizer.step()
             scheduler.step()
             if it % 5 == 0:
                 print(f"ep{ep}, loss_ce: {loss_oppo_ce:.2f}, loss_cos: {loss_cos:.6f}, loss_obj: {loss_obj:.2f}, lr: {optimizer.param_groups[0]['lr']}")
@@ -145,7 +159,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     craft_w = craft_tensor(B=flat_model0, M1=last_mail_w, M2=w, k=budget)
     
     # restored_crafted = restore_dict_grad_flat(craft_w, model0.state_dict(), model.state_dict())
-    restored_crafted = restore_dict_w_flat(craft_w, model.state_dict())
+    restored_crafted = restore_dict_w_flat(craft_w, model1)
     model.load_state_dict(restored_crafted)
     crafted_cos_d = cos_dist_w(flat_model0, craft_w)
         
@@ -154,13 +168,18 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     return {"loss": running_loss / samples}
 
 
-def restore_dict_w_flat(param_flat, model_dict):
+def restore_dict_w_flat(param_flat, model):
     restored_w = {}
     start = 0
-    for name, param in model_dict.items():
+    param_names = {name for name, _ in model.named_parameters()}
+    # print("param_names", param_names)
+    for name, param in model.state_dict().items():
+        if name in param_names:
             num_elements = param.numel()
             restored_w[name] = param_flat[start:start + num_elements].view(param.shape)                          
             start += num_elements
+        else:
+            restored_w[name] = param
     return restored_w
 
 

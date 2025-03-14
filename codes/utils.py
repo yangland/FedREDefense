@@ -1917,7 +1917,7 @@ def cos_pairs_and_mean(grad_all, grad_mean):
     
     cos_mean, cos_med, cos_std = mean_cosine_similarity(grad_all)
     
-    norm_all = torch.nn.functional.normalize(torch.tensor(grad_all).to(device), dim=1)
+    norm_all = torch.nn.functional.normalize(grad_all.to(device), dim=1)
     mean_flat = mean_flat / mean_flat.norm(dim=0, keepdim=True)
     
     if mean_flat.dim() == 1:

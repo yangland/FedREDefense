@@ -286,7 +286,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             if hp["attack_method"] == "untargeted_cos":
                 budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_w, final_cos = \
                                 untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                model_name, num_classes, xp, hp, K=6, beta=0.5, lambda_=hp["lambda_"])
+                                model_name, num_classes, xp, hp, K=6, beta_=hp["beta_"], lambda_=hp["lambda_"], adv_lr = hp["adv_lr"])
                 
                 for client in mali_clients:
                     client.model.load_state_dict(mali_w)
