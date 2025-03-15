@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 import random
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from geom_median.torch import compute_geometric_median
+# from geom_median.torch import compute_geometric_median
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 logger = logging.getLogger("logger")
@@ -879,6 +879,7 @@ def restore_dict_grad_flat(flat_grad, server_w, model_dict):
     param_dict_keys = set(server_w.keys())
     
     missing_keys = state_dict_keys - param_dict_keys    
+    print("missing_keys", missing_keys)
     
     restored_w = {}
     start = 0
@@ -2063,7 +2064,7 @@ def weighted_average_to_cosine_distance(B, M1, M2, k):
         
         # Convert alpha to a tensor and craft the new tensor C
         alpha_tensor = torch.tensor(alpha, dtype=torch.float32)
-        print("alpha_tensor", alpha_tensor)
+        print("alpha_tensor", alpha_tensor.item())
         C = alpha_tensor * M1 + (1 - alpha_tensor) * M2
         return C
     else:

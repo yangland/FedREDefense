@@ -10,7 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 from copy import deepcopy
 
-device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
                                  model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile):
@@ -83,15 +83,15 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_sd2.values()]).any().item()
     if model_has_nan:
         print("crafted model weight has NA values!")
-    cos_d = nn.CosineSimilarity(dim=0, eps=1e-9)
-    final_cos = 1 - cos_d(flat_dict(malicc.model.state_dict()),flat_dict(mali_sd2)).item()
+        
+    sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd2), eps=1e-9)
     
     malicc.model.load_state_dict(mali_sd2, strict=False)
     
     # Evaluate final attack results
     acc_results2 = malicc.feedback_on_attack(class_num=10).items()
     
-    return budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd2, float(final_cos)
+    return budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd2, float(sd_cos)
 
 
 def stable_log_cosh_cross_entropy_loss(preds, targets):
@@ -103,14 +103,14 @@ def stable_log_cosh_cross_entropy_loss(preds, targets):
 def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
     model.train()
     # model.parameters need to use 
-    flat_model0 = flat_dict(filter_trainable_state_dict(model0))
-    flat_model1 = flat_dict(filter_trainable_state_dict(model1))
+    flat_w0 = flat_dict(filter_trainable_state_dict(model0))
+    flat_w1 = flat_dict(filter_trainable_state_dict(model1))
     
     losses = []
     running_loss, samples = 0.0, 0
     print(f"data length {len(loader) * loader.batch_size}: batches {len(loader)}, batch_size {loader.batch_size}")
     
-    last_mail_w = flat_model0.clone().detach()
+    last_mail_w = flat_w1.clone().detach()
     for ep in range(epochs):
         for it, (x, y) in enumerate(loader):
             if it % 2 == 0:
@@ -128,14 +128,15 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             # add cos loss 
             w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
             target = torch.ones(len(w)).to(device)
-            loss_cos = nn.CosineEmbeddingLoss()(flat_model0.unsqueeze(0), w.unsqueeze(0), target)
+            loss_cos = nn.CosineEmbeddingLoss()(flat_w1.unsqueeze(0), w.unsqueeze(0), target)
             
             # combindation loss
             # loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
             
             scaler = torch.amp.GradScaler()
             with torch.amp.autocast(device_type=device):
-                loss_obj = (1-beta) * (- stable_log_cosh_cross_entropy_loss(model(x), y)) + beta * loss_cos
+                # loss_obj = (1-beta) * (- stable_log_cosh_cross_entropy_loss(model(x), y)) + beta * loss_cos
+                loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
             
             # only negative loss
             # loss_obj = loss_oppo_ce 
@@ -150,7 +151,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 print(f"ep{ep}, loss_ce: {loss_oppo_ce:.2f}, loss_cos: {loss_cos:.6f}, loss_obj: {loss_obj:.2f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
-        crafted_cos_d = cos_dist_w(flat_model0, w)
+        crafted_cos_d = cos_dist_w(flat_w1, w)
         print(f"cos_d: {crafted_cos_d}, budget: {budget}")
 
         if crafted_cos_d > budget:
@@ -160,12 +161,12 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
         last_mail_w = w
         
     # craft_g = combine_tensors(B=grad_ben, M=grad_mail, budget=budget)
-    craft_w = craft_tensor(B=flat_model0, M1=last_mail_w, M2=w, k=budget)
+    craft_w = craft_tensor(B=flat_w1, M1=last_mail_w, M2=w, k=budget)
     
     # restored_crafted = restore_dict_grad_flat(craft_w, model0.state_dict(), model.state_dict())
     restored_crafted = restore_dict_w_flat(craft_w, model1)
     model.load_state_dict(restored_crafted)
-    crafted_cos_d = cos_dist_w(flat_model0, craft_w)
+    crafted_cos_d = cos_dist_w(flat_w1, craft_w)
         
     print(f"crafted cos_d: {crafted_cos_d}")        
 
