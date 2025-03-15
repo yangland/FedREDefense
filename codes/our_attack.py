@@ -13,7 +13,7 @@ from copy import deepcopy
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr):
+                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
     adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
     
@@ -42,8 +42,12 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     ben_mean_model.load_state_dict(benign_mean_sd)
     benign_mean_w = state_dict_to_w(sd = benign_mean_sd, w = malicc.server_w)
     
-    cos_mean, cos_med, cos_std, cos_to_mean = cos_pairs_and_mean(all_w, benign_mean_w)
-    xp.log({"cos_mean": cos_mean, "cos_med": cos_med, "cos_std": cos_std, "mean_cos_to_mean": cos_to_mean})
+    cos_mean, cos_med, cos_std, cos_precentile, cos_to_mean = cos_pairs_and_mean(all_w, benign_mean_w, percentile=percentile)
+    xp.log({"cos_mean": cos_mean, 
+            "cos_med": cos_med, 
+            "cos_precentile": cos_precentile, 
+            "cos_std": cos_std, 
+            "mean_cos_to_mean": cos_to_mean})
     
     # Prepare malicious client for attack
     # malicc.sub_loader = malicc.get_sub_dataloader(mult=min(2, malicc.data_multiplier))

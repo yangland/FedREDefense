@@ -1912,10 +1912,9 @@ def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor
     return A @ B.T  # Compute cosine similarity
 
 
-def cos_pairs_and_mean(grad_all, grad_mean):
+def cos_pairs_and_mean(grad_all, grad_mean, percentile):
     mean_flat = flat_dict(grad_mean)
-    
-    cos_mean, cos_med, cos_std = mean_cosine_similarity(grad_all)
+    result_dict = cosine_similarity_analysis(grad_all, t=percentile)
     
     norm_all = torch.nn.functional.normalize(grad_all.to(device), dim=1)
     mean_flat = mean_flat / mean_flat.norm(dim=0, keepdim=True)
@@ -1923,7 +1922,8 @@ def cos_pairs_and_mean(grad_all, grad_mean):
     if mean_flat.dim() == 1:
         mean_flat = mean_flat.unsqueeze(0) 
     cos_to_mean = torch.mm(mean_flat, norm_all.T).squeeze().mean().item()
-    return cos_mean, cos_med, cos_std, cos_to_mean
+    
+    return result_dict['mean'], result_dict['med'], result_dict['std'], result_dict["percentile"], cos_to_mean
 
 
 def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
@@ -1933,7 +1933,8 @@ def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     mal_mean = flat_dict(mal_mean)
     ben_mean = flat_dict(ben_mean)
 
-    ben_cos_mean, ben_cos_med, ben_cos_std = mean_cosine_similarity(ben_all)
+    result_dict = cosine_similarity_analysis(ben_all)
+    print("result_dict", result_dict)
 
     mal_mean = mal_mean / mal_mean.norm(dim=0, keepdim=True)  
     ben_mean = ben_mean / ben_mean.norm(dim=0, keepdim=True).to(device)
@@ -1946,23 +1947,44 @@ def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     if ben_mean.dim() == 1:
         ben_mean = ben_mean.unsqueeze(0) 
     ben_cos_to_mean = torch.mm(ben_mean, ben_all_norm.T).squeeze().mean().item()
-    return cos_matrix, min_idx, ben_cos_mean, ben_cos_med, ben_cos_std, mali_ben_mean_cos, ben_cos_to_mean
+    return cos_matrix, min_idx, result_dict['mean'], result_dict['med'], result_dict['std'], mali_ben_mean_cos, ben_cos_to_mean
 
 
-def mean_cosine_similarity(A):
+# def cosine_similarity_analysis(A):
+#     A = A.clone().detach().to(device)
+#     n = A.shape[0]
+#     cos_sims = []
+    
+#     for i in range(n):
+#         # print("i", i)
+#         for j in range(i + 1, n):
+#             cos_sim = torch.nn.functional.cosine_similarity(A[i], A[j], dim=0)
+#             cos_sims.append(cos_sim.item())
+    
+#     cos_sims = torch.tensor(cos_sims)
+#     # print("cos_sims", cos_sims)
+#     return cos_sims.mean().item(), torch.median(cos_sims).item(), torch.std(cos_sims, dim=0).item()
+
+def cosine_similarity_analysis(A, t):
     A = A.clone().detach().to(device)
     n = A.shape[0]
     cos_sims = []
     
     for i in range(n):
-        # print("i", i)
         for j in range(i + 1, n):
             cos_sim = torch.nn.functional.cosine_similarity(A[i], A[j], dim=0)
             cos_sims.append(cos_sim.item())
     
     cos_sims = torch.tensor(cos_sims)
-    # print("cos_sims", cos_sims)
-    return cos_sims.mean().item(), torch.median(cos_sims).item(), torch.std(cos_sims, dim=0).item()
+    
+    percentile_t = torch.quantile(cos_sims, t / 100.0).item()
+    
+    return {
+        "mean": cos_sims.mean().item(),
+        "med": torch.median(cos_sims).item(),
+        "std": torch.std(cos_sims, dim=0).item(),
+        "percentile": percentile_t
+    }
 
 
 class OppositeCrossEntropyLoss(torch.nn.Module):
