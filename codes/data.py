@@ -43,14 +43,14 @@ def split_dirichlet(labels, n_clients, n_data, alpha, double_stochstic=True, see
     return client_idcs
 
 def get_loan(path):
-    cinic_directory = '../data/loan'
-    train_data = torchvision.datasets.ImageFolder(cinic_directory + '/train', transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(mean=cinic_mean,std=cinic_std)]))
-    test_data = torchvision.datasets.ImageFolder(cinic_directory + '/test', transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(mean=cinic_mean,std=cinic_std)]))
+    loan_directory = '../data/loan'
+    train_data = torchvision.datasets.ImageFolder(loan_directory + '/train', transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(mean=cinic_mean,std=cinic_std)]))
+    test_data = torchvision.datasets.ImageFolder(loan_directory + '/test', transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(mean=cinic_mean,std=cinic_std)]))
     return train_data, test_data
 
 
 def get_cinic10(path):
-    cinic_directory = '../data/cinic10'
+    cinic_directory = 'data/cinic10'
     cinic_mean = [0.47889522, 0.47227842, 0.43047404]
     cinic_std = [0.24205776, 0.23828046, 0.25874835]
     train_data = torchvision.datasets.ImageFolder(cinic_directory + '/train', transform=torchvision.transforms.Compose([torchvision.transforms.ToTensor(), torchvision.transforms.Normalize(mean=cinic_mean,std=cinic_std)]))

@@ -62,33 +62,93 @@ class Block(nn.Module):
         return out
 
 
-class MobileNetV2(nn.Module):
-    # (expansion, out_planes, num_blocks, stride)
+# class MobileNetV2(nn.Module):
+#     # (expansion, out_planes, num_blocks, stride)
 
-    def __init__(self, num_classes=10, norm_layer=nn.BatchNorm2d,shrink=1, dataset = 'cifar10'):
+#     def __init__(self, num_classes=10, norm_layer=nn.BatchNorm2d,shrink=1, dataset = 'cifar10'):
+#         super(MobileNetV2, self).__init__()
+#         # NOTE: change conv1 stride 2 -> 1 for CIFAR10
+#         self.dataset = dataset
+#         channel =  channel_dict.get(dataset)
+#         self.norm_layer = norm_layer
+#         self.cfg = [(1,  16//shrink, 1, 1),
+#                    (6,  24//shrink, 2, 1),  # NOTE: change stride 2 -> 1 for CIFAR10
+#                    (6,  32//shrink, 3, 2),
+#                    (6,  64//shrink, 4, 2),
+#                    (6,  96//shrink, 3, 1),
+#                    (6, 160//shrink, 3, 2),
+#                    (6, 320//shrink, 1, 1)]
+
+
+#         self.conv1 = nn.Conv2d(channel, 32, kernel_size=3, stride=1, padding=1, bias=False)
+#         self.bn1 = self.norm_layer(32)
+#         self.layers = self._make_layers(in_planes=32)
+#         self.conv2 = nn.Conv2d(self.cfg[-1][1], 1280//shrink, kernel_size=1, stride=1, padding=0, bias=False)
+#         self.bn2 = self.norm_layer(1280//shrink)
+
+
+#         self.classification_layer = nn.Linear(1280//shrink, num_classes)
+
+
+#     def _make_layers(self, in_planes):
+#         layers = []
+#         for expansion, out_planes, num_blocks, stride in self.cfg:
+#             strides = [stride] + [1]*(num_blocks-1)
+#             for stride in strides:
+#                 layers.append(Block(in_planes, out_planes, expansion, stride, self.norm_layer))
+#                 in_planes = out_planes
+#         return nn.Sequential(*layers)
+
+
+#     def extract_features(self, x):
+#         out = F.relu(self.bn1(self.conv1(x)))
+#         out = self.layers(out)
+#         out = F.relu(self.bn2(self.conv2(out)))
+#         out = F.avg_pool2d(out, 4)
+#         out = out.view(out.size(0), -1)
+#         return out
+
+
+#     def forward(self, x):
+#         feature = self.extract_features(x)
+#         out = self.classification_layer(feature)
+#         return out
+
+
+class MobileNetV2(nn.Module):
+    def __init__(self, num_classes=10, norm_layer=nn.BatchNorm2d, shrink=1, width_mult=1.0, dataset='cifar10'):
         super(MobileNetV2, self).__init__()
+
         # NOTE: change conv1 stride 2 -> 1 for CIFAR10
         self.dataset = dataset
-        channel =  channel_dict.get(dataset)
+        channel = channel_dict.get(dataset)
         self.norm_layer = norm_layer
-        self.cfg = [(1,  16//shrink, 1, 1),
-                   (6,  24//shrink, 2, 1),  # NOTE: change stride 2 -> 1 for CIFAR10
-                   (6,  32//shrink, 3, 2),
-                   (6,  64//shrink, 4, 2),
-                   (6,  96//shrink, 3, 1),
-                   (6, 160//shrink, 3, 2),
-                   (6, 320//shrink, 1, 1)]
+        
+        # Modify the cfg with width_mult
+        self.cfg = [
+            (1, 16//shrink, 1, 1),
+            (6, 24//shrink, 2, 1),
+            (6, 32//shrink, 3, 2),
+            (6, 64//shrink, 4, 2),
+            (6, 96//shrink, 3, 1),
+            (6, 160//shrink, 3, 2),
+            (6, 320//shrink, 1, 1)
+        ]
 
-
-        self.conv1 = nn.Conv2d(channel, 32, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = self.norm_layer(32)
-        self.layers = self._make_layers(in_planes=32)
-        self.conv2 = nn.Conv2d(self.cfg[-1][1], 1280//shrink, kernel_size=1, stride=1, padding=0, bias=False)
-        self.bn2 = self.norm_layer(1280//shrink)
-
-
-        self.classification_layer = nn.Linear(1280//shrink, num_classes)
-
+        # Apply width_mult to each layer's output channels in cfg
+        self.cfg = [(expansion, int(out_planes * width_mult)//shrink, num_blocks, stride) for expansion, out_planes, num_blocks, stride in self.cfg]
+        
+        # First convolution layer
+        self.conv1 = nn.Conv2d(channel, int(32 * width_mult), kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = self.norm_layer(int(32 * width_mult))
+        
+        # Make the layers based on the modified cfg
+        self.layers = self._make_layers(in_planes=int(32 * width_mult))
+        
+        # Final convolution and classification layer with width_mult
+        self.conv2 = nn.Conv2d(self.cfg[-1][1], int(1280 * width_mult)//shrink, kernel_size=1, stride=1, padding=0, bias=False)
+        self.bn2 = self.norm_layer(int(1280 * width_mult)//shrink)
+        self.classification_layer = nn.Linear(int(1280 * width_mult)//shrink, num_classes)
 
     def _make_layers(self, in_planes):
         layers = []
@@ -99,7 +159,6 @@ class MobileNetV2(nn.Module):
                 in_planes = out_planes
         return nn.Sequential(*layers)
 
-
     def extract_features(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layers(out)
@@ -107,7 +166,6 @@ class MobileNetV2(nn.Module):
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         return out
-
 
     def forward(self, x):
         feature = self.extract_features(x)
@@ -117,8 +175,9 @@ class MobileNetV2(nn.Module):
 
 
 
+
 def mobilenetv2(num_classes=10, dataset = 'cifar10'):
-    return MobileNetV2(norm_layer=nn.BatchNorm2d, shrink=2, num_classes=num_classes, dataset = 'cifar10')
+    return MobileNetV2(norm_layer=nn.BatchNorm2d, shrink=2, width_mult=0.5, num_classes=num_classes, dataset = 'cifar10')
 
 
     
