@@ -177,7 +177,7 @@ class MobileNetV2(nn.Module):
 
 
 def mobilenetv2(num_classes=10, dataset = 'cifar10'):
-    return MobileNetV2(norm_layer=nn.BatchNorm2d, shrink=2, width_mult=0.5, num_classes=num_classes, dataset = 'cifar10')
+    return MobileNetV2(norm_layer=nn.BatchNorm2d, shrink=2, width_mult=0.35, num_classes=num_classes, dataset = 'cifar10')
 
 
     
