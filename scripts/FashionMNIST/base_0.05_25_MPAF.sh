@@ -1,5 +1,5 @@
 cmdargs=$1
-# aggregation_mode: "FedAVG","median", "RLR", "krum", "flame", "NormBound", "trmean"
+# aggregation_mode: "FedAVG","median", "rfa", "krum", "flame", "NormBound", "trmean"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
 export CUDA_VISIBLE_DEVICES='7'
 hyperparameters04='[{

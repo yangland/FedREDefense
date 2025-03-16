@@ -1,5 +1,5 @@
 cmdargs=$1
-# aggregation_mode: "FedAVG","median", "RLR", "krum", "flame", "NormBound", "trmean"
+# aggregation_mode: "FedAVG","median", "rfa", "krum", "flame", "NormBound", "trmean"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
 export CUDA_VISIBLE_DEVICES='2'
 hyperparameters04='[{
@@ -17,7 +17,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["FedAVG","median", "RLR", "krum", "flame", "NormBound"],
+    "aggregation_mode" : ["FedAVG","median", "rfa", "krum", "flame", "NormBound"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],

@@ -1,14 +1,14 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "rfa", "krum", "flame", "NormBound", "trmean"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
-export CUDA_VISIBLE_DEVICES='4'
+export CUDA_VISIBLE_DEVICES='5'
 hyperparameters04='[{
     "random_seed" : [4],
-    "dataset" : ["fmnist"],
-    "models" : [{"ConvNet" : 100}],
+    "dataset" : ["cinic10"],
+    "models" : [{"mobilenetv2": 100}],
 
-    "attack_rate" :  [0.25],
-    "attack_method": ["Min-Sum"],
+    "attack_rate" :  [0],
+    "attack_method": ["NO"],
     "participation_rate" : [1],
 
     "alpha" : [0.05],
@@ -19,7 +19,7 @@ hyperparameters04='[{
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
     "aggregation_mode" : ["FedAVG","median", "rfa", "krum", "flame", "NormBound"],
     "pretrained" : [null],
-    "save_model" : [null],
+    "save_model" : [1],
     "log_frequency" : [1],
     "log_path" : ["new_noniid/"],
     "robustLR_threshold" : [4] ,
@@ -33,8 +33,7 @@ hyperparameters04='[{
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
     "lambda_": [1],
-    "beta_": [0.4],
-    "adv_lr": [0.005]
+    "percentile": [25]
     }]'
 
 

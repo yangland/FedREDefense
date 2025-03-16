@@ -17,7 +17,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["FedAVG","median", "RLR", "krum", "flame", "NormBound"],
+    "aggregation_mode" : ["FedAVG","median", "rfa", "krum", "flame", "NormBound"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
