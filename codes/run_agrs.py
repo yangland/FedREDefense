@@ -110,11 +110,14 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     logger.info(f"num classes {num_classes}, dsa mode {hp.get('dsa', True)}")
     model_names = [model_name for model_name, k in hp["models"].items()
                    for _ in range(k)]
+    
+    print("model_names", model_names)
     optimizer, optimizer_hp = getattr(
         torch.optim, hp["local_optimizer"][0]), hp["local_optimizer"][1]
 
     def optimizer_fn(x): return optimizer(
         x, **{k: hp[k] if k in hp else v for k, v in optimizer_hp.items()})
+    
     logger.info(f"dataset : {hp['dataset']}")
 
     train_data_all, test_data = data.get_data(hp["dataset"], args.DATA_PATH)

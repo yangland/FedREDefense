@@ -1,13 +1,13 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "rfa"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='0'
+export CUDA_VISIBLE_DEVICES='4'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cinic10"],
     "models" : [{"mobilenetv2": 100}],
 
-    "attack_rate" :  [ 0.25, 0.1, 0],
+    "attack_rate" :  [0, 0.1, 0.25],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
@@ -33,6 +33,8 @@ hyperparameters04='[{
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
     "lambda_": [1],
+    "beta_": [0.05],
+    "adv_lr": [0.1],
     "percentile": [25]
     }]'
 

@@ -51,6 +51,8 @@ class Client(Device):
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
+        
+        print("client optimizer", self.optimizer )
         self.benign_grad = dict()
 
     def synchronize_with_server(self, server):

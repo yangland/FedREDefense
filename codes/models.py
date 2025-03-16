@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torchvision.models.resnet import ResNet, BasicBlock, conv3x3, conv1x1
+from torchvision.models.resnet import ResNet #, BasicBlock, conv3x3, conv1x1
 
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
@@ -185,6 +185,35 @@ def mobilenetv2(num_classes=10, dataset = 'cifar10'):
 ############################################################################################################
 # RESNET
 ############################################################################################################
+class BasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super(BasicBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        # Fix shortcut issue
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        
+        # Ensure shortcut has the same shape as `out`
+        shortcut_out = self.shortcut(x)
+        if shortcut_out.shape != out.shape:
+            shortcut_out = F.interpolate(shortcut_out, size=out.shape[2:], mode="nearest")  # Resize spatial dims
+        
+        out += shortcut_out  # Add skip connection
+        return F.relu(out)
+
+
 class basic_noskip(BasicBlock):
     expansion: int = 1
     def __init__(
@@ -510,33 +539,33 @@ class LogisticRegression(nn.Module):
 # RESNET18
 ############################################################################################################
 
-class BasicBlock(nn.Module):
-    expansion = 1
+# class BasicBlock(nn.Module):
+#     expansion = 1
 
-    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.downsample = downsample
+#     def __init__(self, in_channels, out_channels, stride=1, downsample=None):
+#         super(BasicBlock, self).__init__()
+#         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+#         self.bn1 = nn.BatchNorm2d(out_channels)
+#         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+#         self.bn2 = nn.BatchNorm2d(out_channels)
+#         self.downsample = downsample
 
-    def forward(self, x):
-        identity = x
-        if self.downsample is not None:
-            identity = self.downsample(x)
+#     def forward(self, x):
+#         identity = x
+#         if self.downsample is not None:
+#             identity = self.downsample(x)
         
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = F.relu(out)
+#         out = self.conv1(x)
+#         out = self.bn1(out)
+#         out = F.relu(out)
         
-        out = self.conv2(out)
-        out = self.bn2(out)
+#         out = self.conv2(out)
+#         out = self.bn2(out)
         
-        out += identity
-        out = F.relu(out)
+#         out += identity
+#         out = F.relu(out)
         
-        return out
+#         return out
 
 class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000):
@@ -595,12 +624,35 @@ def resnet18(num_classes=10, dataset = 'cifar10'):
 
 
 
+class ResNet6(nn.Module):
+    def __init__(self, num_classes=10, dataset='cifar10'):
+        super(ResNet6, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(16)
+        
+        self.layer1 = BasicBlock(16, 32, stride=2)  # First residual block
+        self.layer2 = BasicBlock(32, 64, stride=2)  # Second residual block
+        
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))  # Global Average Pooling
+        self.fc = nn.Linear(64, num_classes)
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.avgpool(out)
+        out = torch.flatten(out, 1)
+        return self.fc(out)
+
+
+
 
 def get_model(model):
 
   return  {   "mobilenetv2" : (mobilenetv2, optim.Adam, {"lr" : 0.001}),
               "shufflenet" : (ShuffleNet, optim.Adam, {"lr" : 0.001}),
-                "resnet8" : (resnet8, optim.Adam, {"lr" : 0.001}),
+                "resnet8" : (resnet8, optim.Adam, {"lr" : 0.0001}),
+                "resnet6" : (ResNet6, optim.Adam, {"lr" : 0.0001}),
                 "resnet8_noskip" : (resnet8_noskip, optim.Adam, {"lr" : 0.001}),
                 "resnet18" : (resnet18, optim.Adam, {"lr" : 0.001}),
                 "ConvNet" : (ConvNet, optim.Adam, {"lr" : 0.001}),
