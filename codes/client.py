@@ -59,7 +59,7 @@ class Client(Device):
         server_state = server.model_dict[self.model_name].state_dict()
         self.model.load_state_dict(server_state, strict=False)
 
-    def compute_weight_update(self, epochs=1, loader=None, print_train_loss=False,  hp=None):
+    def compute_weight_update(self, epochs=1, loader=None, print_train_loss=True,  hp=None):
         clip_bound, privacy_sigma = None, None
         train_stats = train_op(self.model, self.loader if not loader else loader,
                                self.optimizer, epochs, print_train_loss=print_train_loss)

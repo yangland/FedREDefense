@@ -186,31 +186,24 @@ def mobilenetv2(num_classes=10, dataset = 'cifar10'):
 # RESNET
 ############################################################################################################
 class BasicBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1):
+    expansion = 1  # Required for ResNet compatibility
+
+    def __init__(self, in_channels, out_channels, stride=1, downsample=None):
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
-
-        # Fix shortcut issue
-        self.shortcut = nn.Sequential()
-        if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(out_channels)
-            )
+        self.downsample = downsample  # Store the downsampling module
 
     def forward(self, x):
+        identity = x
+        if self.downsample is not None:
+            identity = self.downsample(x)  # Apply downsampling if needed
+        
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        
-        # Ensure shortcut has the same shape as `out`
-        shortcut_out = self.shortcut(x)
-        if shortcut_out.shape != out.shape:
-            shortcut_out = F.interpolate(shortcut_out, size=out.shape[2:], mode="nearest")  # Resize spatial dims
-        
-        out += shortcut_out  # Add skip connection
+        out += identity  # Add skip connection
         return F.relu(out)
 
 
@@ -503,6 +496,77 @@ class ConvNet(nn.Module):
 
         return nn.Sequential(*layers), shape_feat
 
+class ConvNet32(nn.Module):
+    def __init__(self, num_classes=10, net_width=256, net_depth=6, net_act='relu', net_norm='instancenorm', net_pooling='avgpooling', im_size = (32,32), dataset = 'cifar10'):
+        super(ConvNet32, self).__init__()
+        channel =  channel_dict.get(dataset)
+        self.features, shape_feat = self._make_layers(channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size)
+        num_feat = shape_feat[0]*shape_feat[1]*shape_feat[2]
+        self.classifier = nn.Linear(num_feat, num_classes)
+
+    def forward(self, x):
+        out = self.get_feature(x)
+        out = self.classifier(out)
+        return out
+
+    def get_feature(self,x):
+        out = self.features(x)
+        out = out.view(out.size(0), -1)
+        return out
+
+    def _get_activation(self, net_act):
+        if net_act == 'sigmoid':
+            return nn.Sigmoid()
+        elif net_act == 'relu':
+            return nn.ReLU(inplace=True)
+        elif net_act == 'leakyrelu':
+            return nn.LeakyReLU(negative_slope=0.01)
+        else:
+            exit('unknown activation function: %s'%net_act)
+
+    def _get_pooling(self, net_pooling):
+        if net_pooling == 'maxpooling':
+            return nn.MaxPool2d(kernel_size=2, stride=2)
+        elif net_pooling == 'avgpooling':
+            return nn.AvgPool2d(kernel_size=2, stride=2)
+        elif net_pooling == 'none':
+            return None
+        else:
+            exit('unknown net_pooling: %s'%net_pooling)
+
+    def _get_normlayer(self, net_norm, shape_feat):
+        if net_norm == 'batchnorm':
+            return nn.BatchNorm2d(shape_feat[0], affine=True)
+        elif net_norm == 'layernorm':
+            return nn.LayerNorm(shape_feat, elementwise_affine=True)
+        elif net_norm == 'instancenorm':
+            return nn.GroupNorm(shape_feat[0], shape_feat[0], affine=True)
+        elif net_norm == 'groupnorm':
+            return nn.GroupNorm(4, shape_feat[0], affine=True)
+        elif net_norm == 'none':
+            return None
+        else:
+            exit('unknown net_norm: %s'%net_norm)
+
+    def _make_layers(self, channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size):
+        layers = []
+        in_channels = channel
+        if im_size[0] == 28:
+            im_size = (32, 32)
+        shape_feat = [in_channels, im_size[0], im_size[1]]
+        for d in range(net_depth):
+            layers += [nn.Conv2d(in_channels, net_width, kernel_size=3, stride=1 if d % 2 == 0 else 2, padding=1)]
+            shape_feat[0] = net_width
+            if d % 2 == 1:  # Downsampling occurs, update spatial dimensions
+                shape_feat[1] //= 2
+                shape_feat[2] //= 2
+            if net_norm != 'none':
+                layers += [self._get_normlayer(net_norm, shape_feat)]
+            layers += [self._get_activation(net_act)]
+            in_channels = net_width
+
+        return nn.Sequential(*layers), shape_feat
+
 
 
 class TextModel(nn.Module):
@@ -704,18 +768,80 @@ class SqueezeNet(nn.Module):
         return x
 
 
+class MiniMobileNetV2(nn.Module):
+    def __init__(self, num_classes=10, dataset='cifar10'):
+        super(MiniMobileNetV2, self).__init__()
+        
+        # Define the MobileNetV2 structure from scratch
+        
+        # Initial Convolution Layer
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=2, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.relu1 = nn.ReLU(inplace=True)
+        
+        # Define the inverted residual blocks
+        self.block1 = self._make_inverted_residual_block(32, 16, 1, 1)
+        self.block2 = self._make_inverted_residual_block(16, 24, 6, 2)
+        self.block3 = self._make_inverted_residual_block(24, 32, 6, 2)
+        self.block4 = self._make_inverted_residual_block(32, 64, 6, 2)
+        self.block5 = self._make_inverted_residual_block(64, 96, 6, 1)
+        self.block6 = self._make_inverted_residual_block(96, 160, 6, 2)
+        self.block7 = self._make_inverted_residual_block(160, 320, 6, 1)
+        
+        # Final Convolution and Classifier
+        self.conv2 = nn.Conv2d(320, 1280, kernel_size=1, stride=1)
+        self.bn2 = nn.BatchNorm2d(1280)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(1280, num_classes)
+
+    def _make_inverted_residual_block(self, in_channels, out_channels, t, stride):
+        """Create an inverted residual block."""
+        return nn.Sequential(
+            # Pointwise 1x1 convolution (expansion layer)
+            nn.Conv2d(in_channels, in_channels * t, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(in_channels * t),
+            nn.ReLU(inplace=True),
+            
+            # Depthwise separable convolution (depthwise convolution)
+            nn.Conv2d(in_channels * t, in_channels * t, kernel_size=3, stride=stride, padding=1, groups=in_channels * t),
+            nn.BatchNorm2d(in_channels * t),
+            nn.ReLU(inplace=True),
+            
+            # Pointwise 1x1 convolution (projection layer)
+            nn.Conv2d(in_channels * t, out_channels, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(out_channels),
+        )
+
+    def forward(self, x):
+        x = self.relu1(self.bn1(self.conv1(x)))  # First conv layer
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        x = self.block5(x)
+        x = self.block6(x)
+        x = self.block7(x)
+        x = self.relu2(self.bn2(self.conv2(x)))  # Final convolution
+        x = self.avgpool(x)  # Global average pooling
+        x = torch.flatten(x, 1)  # Flatten the tensor
+        x = self.fc(x)  # Final classifier
+        return x
+
 
 def get_model(model):
 
-  return  {   "mobilenetv2" : (mobilenetv2, optim.Adam, {"lr" : 0.001}),
-              "shufflenet" : (ShuffleNet, optim.Adam, {"lr" : 0.001}),
-              "SqueezeNet" : (SqueezeNet, optim.Adam, {"lr" : 0.001}),
+  return  {     "mobilenetv2" : (mobilenetv2, optim.Adam, {"lr" : 0.001}),
+                "MiniMobileNetV2": (MiniMobileNetV2, optim.Adam, {"lr" : 0.001}),
+                "shufflenet" : (ShuffleNet, optim.Adam, {"lr" : 0.001}),
+                "SqueezeNet" : (SqueezeNet, optim.Adam, {"lr" : 0.001}),
                 "resnet8" : (resnet8, optim.Adam, {"lr" : 0.0001}),
                 "resnet6" : (ResNet6, optim.Adam, {"lr" : 0.0001}),
                 "resnet8_noskip" : (resnet8_noskip, optim.Adam, {"lr" : 0.001}),
                 "resnet18" : (resnet18, optim.Adam, {"lr" : 0.001}),
+                "ConvNet32" : (ConvNet32, optim.Adam, {"lr" : 0.001}),
                 "ConvNet" : (ConvNet, optim.Adam, {"lr" : 0.001}),
-                "ConvNet6" : (Mnist_6L, optim.Adam, {"lr" : 0.001}),
+                "Mnist_6L" : (Mnist_6L, optim.Adam, {"lr" : 0.001}),
                 "MLP" : (MLP, optim.Adam, {"lr" : 0.001}),
                 "TextModel" : (TextModel, optim.Adam, {"lr" : 1}),
                 "LogisticRegression" : (LogisticRegression, optim.Adam, {"lr" : 0.001}),

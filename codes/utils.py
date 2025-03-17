@@ -1000,29 +1000,64 @@ def gaussian_noise(data_shape, s, sigma, device=None):
     return torch.normal(0, sigma * s, data_shape).to(device)
 
 
-def train_op(model, loader, optimizer, epochs, print_train_loss=False):
+# def train_op(model, loader, optimizer, epochs, print_train_loss=False):
+#     model.train()
+
+#     # W0 = {k: v.detach().clone() for k, v in model.named_parameters()}
+#     losses = []
+#     # import pdb; pdb.set_trace()
+#     running_loss, samples = 0.0, 0
+#     for ep in range(epochs):
+#         for it, (x, y) in enumerate(loader):
+#             if print_train_loss and it % 2 == 0:
+#                 losses.append(round(eval_epoch(model, loader), 2))
+#             x, y = x.to(device), y.to(device)
+#             optimizer.zero_grad()
+#             loss = nn.CrossEntropyLoss()(model(x), y)
+#             running_loss += loss.item() * y.shape[0]
+#             samples += y.shape[0]
+#             loss.backward()
+#             optimizer.step()
+#             # break
+#     if print_train_loss:
+#         print(losses)
+
+#     return {"loss": running_loss / samples}
+
+
+
+def train_op(model, loader, optimizer, epochs, print_train_loss=False, device="cuda"):
+    model.to(device)
     model.train()
 
-    # W0 = {k: v.detach().clone() for k, v in model.named_parameters()}
+    loss_fn = nn.CrossEntropyLoss()
     losses = []
-    # import pdb; pdb.set_trace()
+    
     running_loss, samples = 0.0, 0
     for ep in range(epochs):
         for it, (x, y) in enumerate(loader):
-            if print_train_loss and it % 2 == 0:
-                losses.append(round(eval_epoch(model, loader), 2))
-            x, y = x.to(device), y.to(device)
+            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)  # Faster transfer
             optimizer.zero_grad()
-            loss = nn.CrossEntropyLoss()(model(x), y)
-            running_loss += loss.item() * y.shape[0]
-            samples += y.shape[0]
+            
+            outputs = model(x)
+            loss = loss_fn(outputs, y)
+            
             loss.backward()
             optimizer.step()
-            # break
-    if print_train_loss:
-        print(losses)
+
+            # Loss tracking
+            running_loss += loss.item() * y.shape[0]
+            samples += y.shape[0]
+
+            # Evaluate only once per epoch, not every 2 iterations
+            if print_train_loss and it == 0:
+                losses.append(round(eval_epoch(model, loader), 2))  # Ensure eval_epoch uses torch.no_grad()
+
+        if print_train_loss:
+            print(f"Epoch {ep+1}, Loss History: {losses}")
 
     return {"loss": running_loss / samples}
+
 
 
 

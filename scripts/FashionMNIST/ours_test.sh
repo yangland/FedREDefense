@@ -4,7 +4,7 @@ cmdargs=$1
 export CUDA_VISIBLE_DEVICES='6'
 hyperparameters04='[{
     "random_seed" : [4],
-    "dataset" : ["fmnist"],
+    "dataset" : ["mnist"],
     "models" : [{"ConvNet" : 20}], 
 
     "attack_rate" :  [ 0.4],

@@ -106,6 +106,7 @@ class Server(Device):
         super().__init__(loader)
         # import pdb; pdb.set_trace()
         print(f"dataset server {dataset}")
+
         self.model_dict = {model_name: partial(model_utils.get_model(model_name)[
                                                0], num_classes=num_classes, dataset=dataset)().to(device) for model_name in model_names}
         self.parameter_dict = {model_name: {key: value for key, value in model.named_parameters(
