@@ -646,16 +646,76 @@ class ResNet6(nn.Module):
 
 
 
+class Mnist_6L(nn.Module):
+    def __init__(self, num_classes=10, dataset='cifar10'):
+        super(Mnist_6L, self).__init__()
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.dropout1 = nn.Dropout(0.25)
+        self.dropout2 = nn.Dropout(0.5)
+        self.fc1 = nn.Linear(9216, 128)
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout2(x)
+        x = self.fc2(x)
+        output = F.log_softmax(x, dim=1)
+        return output
+
+
+class FireModule(nn.Module):
+    def __init__(self, in_channels, squeeze_channels, expand_channels):
+        super(FireModule, self).__init__()
+        self.squeeze = nn.Conv2d(in_channels, squeeze_channels, kernel_size=1)
+        self.expand1x1 = nn.Conv2d(squeeze_channels, expand_channels, kernel_size=1)
+        self.expand3x3 = nn.Conv2d(squeeze_channels, expand_channels, kernel_size=3, padding=1)
+
+    def forward(self, x):
+        x = torch.relu(self.squeeze(x))
+        return torch.cat([
+            torch.relu(self.expand1x1(x)),
+            torch.relu(self.expand3x3(x))
+        ], dim=1)  # Ensure output remains 4D: [batch, C, H, W]
+
+class SqueezeNet(nn.Module):
+    def __init__(self, num_classes=10, dataset='cifar10'):
+        super(SqueezeNet, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
+        self.fire1 = FireModule(16, 8, 16)
+        self.fire2 = FireModule(32, 8, 16)
+        self.conv2 = nn.Conv2d(32, num_classes, kernel_size=1)
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)  # Ensures correct shape before flattening
+
+    def forward(self, x):
+        x = torch.relu(self.conv1(x))
+        x = self.fire1(x)
+        x = self.fire2(x)
+        x = self.global_avg_pool(x)  # Fix: Ensure correct spatial dimensions
+        x = torch.flatten(x, 1)  # Now it’s [batch_size, num_classes]
+        return x
+
+
 
 def get_model(model):
 
   return  {   "mobilenetv2" : (mobilenetv2, optim.Adam, {"lr" : 0.001}),
               "shufflenet" : (ShuffleNet, optim.Adam, {"lr" : 0.001}),
+              "SqueezeNet" : (SqueezeNet, optim.Adam, {"lr" : 0.001}),
                 "resnet8" : (resnet8, optim.Adam, {"lr" : 0.0001}),
                 "resnet6" : (ResNet6, optim.Adam, {"lr" : 0.0001}),
                 "resnet8_noskip" : (resnet8_noskip, optim.Adam, {"lr" : 0.001}),
                 "resnet18" : (resnet18, optim.Adam, {"lr" : 0.001}),
                 "ConvNet" : (ConvNet, optim.Adam, {"lr" : 0.001}),
+                "ConvNet6" : (Mnist_6L, optim.Adam, {"lr" : 0.001}),
                 "MLP" : (MLP, optim.Adam, {"lr" : 0.001}),
                 "TextModel" : (TextModel, optim.Adam, {"lr" : 1}),
                 "LogisticRegression" : (LogisticRegression, optim.Adam, {"lr" : 0.001}),

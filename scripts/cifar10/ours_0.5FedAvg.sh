@@ -1,11 +1,11 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "rfa"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='6'
+export CUDA_VISIBLE_DEVICES='2'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
-    "models" : [{"resnet6": 20}],
+    "models" : [{"SqueezeNet": 20}],
 
     "attack_rate" :  [0],
     "attack_method": ["NO"],
@@ -13,10 +13,10 @@ hyperparameters04='[{
 
     "alpha" : [10],
     "communication_rounds" : [500],
-    "local_epochs" : [6],
+    "local_epochs" : [2],
     "mali_local_epochs": [5],
     "batch_size" : [32],
-    "local_optimizer" : [ ["SGD", {"lr": 0.0001}]],
+    "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
     "aggregation_mode" : [  "FedAVG"],
     "pretrained" : [null],
     "save_model" : [1],

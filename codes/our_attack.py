@@ -110,7 +110,8 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     running_loss, samples = 0.0, 0
     print(f"data length {len(loader) * loader.batch_size}: batches {len(loader)}, batch_size {loader.batch_size}")
     
-    last_mail_w = flat_w1.clone().detach()
+    # initial as the server model
+    last_mail_w = flat_w0.clone().detach()
     for ep in range(epochs):
         for it, (x, y) in enumerate(loader):
             if it % 2 == 0:
@@ -128,25 +129,20 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             # add cos loss 
             w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
             target = torch.ones(len(w)).to(device)
+            # cos loss with the model1, as the mean of benign
             loss_cos = nn.CosineEmbeddingLoss()(flat_w1.unsqueeze(0), w.unsqueeze(0), target)
-            
-            # combindation loss
-            # loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
             
             scaler = torch.amp.GradScaler()
             with torch.amp.autocast(device_type=device):
                 # loss_obj = (1-beta) * (- stable_log_cosh_cross_entropy_loss(model(x), y)) + beta * loss_cos
                 loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
             
-            # only negative loss
-            # loss_obj = loss_oppo_ce 
-            
             scaler.scale(loss_obj).backward()
             scaler.step(optimizer)
-            
+            scheduler.step()
             # loss_obj.backward()
             # optimizer.step()
-            scheduler.step()
+            
             if it % 5 == 0:
                 print(f"ep{ep}, loss_ce: {loss_oppo_ce:.2f}, loss_cos: {loss_cos:.6f}, loss_obj: {loss_obj:.2f}, lr: {optimizer.param_groups[0]['lr']}")
         
@@ -160,7 +156,8 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
         
         last_mail_w = w
         
-    # craft_g = combine_tensors(B=grad_ben, M=grad_mail, budget=budget)
+    # craft between last_mail_w and the current iteration w
+    # craft_w = craft_tensor(B=flat_w0, M1=last_mail_w, M2=w, k=budget)
     craft_w = craft_tensor(B=flat_w1, M1=last_mail_w, M2=w, k=budget)
     
     # restored_crafted = restore_dict_grad_flat(craft_w, model0.state_dict(), model.state_dict())
