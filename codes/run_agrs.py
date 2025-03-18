@@ -274,43 +274,53 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             client.synchronize_with_server(server)
             train_stats = client.compute_weight_update(hp["local_epochs"])
 
-        def log_krum_selection(mode, multi_k):
-            selected_clients_ids = server.krum(participating_clients, hp["attack_rate"], multi_k=multi_k)
-            malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids_all)
-            mali_select_p = (malicious_count / len(participating_clients))
-            xp.log({f"{mode}_select_percentage": mali_select_p})
+        # def log_krum_selection(mode, multi_k):
+        #     selected_clients_ids = server.krum(participating_clients, hp["attack_rate"], multi_k=multi_k)
+        #     malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids_all)
+        #     mali_select_p = (malicious_count / len(participating_clients))
+        #     xp.log({f"{mode}_select_percentage": mali_select_p})
 
 
-        # server aggregation
-        if hp["aggregation_mode"] == "FedAVG":
-            server.fedavg(participating_clients)
-        elif hp["aggregation_mode"] == "ABAVG":
-            server.abavg(participating_clients)
-        elif hp["aggregation_mode"] == "median":
-            server.median(participating_clients)
-        elif hp["aggregation_mode"] == "NormBound":
-            server.normbound(participating_clients,  hp["attack_rate"])
-        elif hp["aggregation_mode"] == "trmean":
-            server.TrimmedMean(participating_clients, hp["attack_rate"])
-        elif hp["aggregation_mode"] == "krum":
-            log_krum_selection("single_Krum", multi_k=False)
-        elif hp["aggregation_mode"] == "multi-krum":
-            log_krum_selection("Multi_Krum", multi_k=True)
-        elif hp["aggregation_mode"] == "RLR":
-            server.RLR(participating_clients, hp["robustLR_threshold"])
-        elif hp["aggregation_mode"] == "flame":
-            mali_select_p=server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"],
-                         hp["right_ben"], hp["noise"], hp["turn"])
-            xp.log({"flame_mali_select_precentage": mali_select_p})
-        elif hp["aggregation_mode"] == "foolsgold":
-            server.foolsgold(participating_clients)
-        elif hp["aggregation_mode"] == "rfa":
-            server.rfa(participating_clients)
-        elif hp["aggregation_mode"] == "fltrust":
-            server.fltrust(participating_clients, root_loader=fltrust_root_dl, epochs=hp['local_epochs'])
-        else:
-            import pdb
-            pdb.set_trace()
+        # # server aggregation
+        # if hp["aggregation_mode"] == "FedAVG":
+        #     server.fedavg(participating_clients)
+        # elif hp["aggregation_mode"] == "ABAVG":
+        #     server.abavg(participating_clients)
+        # elif hp["aggregation_mode"] == "median":
+        #     server.median(participating_clients)
+        # elif hp["aggregation_mode"] == "NormBound":
+        #     server.normbound(participating_clients,  hp["attack_rate"])
+        # elif hp["aggregation_mode"] == "trmean":
+        #     server.TrimmedMean(participating_clients, hp["attack_rate"])
+        # elif hp["aggregation_mode"] == "krum":
+        #     log_krum_selection("single_Krum", multi_k=False)
+        # elif hp["aggregation_mode"] == "multi-krum":
+        #     log_krum_selection("Multi_Krum", multi_k=True)
+        # elif hp["aggregation_mode"] == "RLR":
+        #     server.RLR(participating_clients, hp["robustLR_threshold"])
+        # elif hp["aggregation_mode"] == "flame":
+        #     mali_select_p=server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"],
+        #                  hp["right_ben"], hp["noise"], hp["turn"])
+        #     xp.log({"flame_mali_select_precentage": mali_select_p})
+        # elif hp["aggregation_mode"] == "foolsgold":
+        #     server.foolsgold(participating_clients)
+        # elif hp["aggregation_mode"] == "rfa":
+        #     server.rfa(participating_clients)
+        # elif hp["aggregation_mode"] == "fltrust":
+        #     server.fltrust(participating_clients, root_loader=fltrust_root_dl, epochs=hp['local_epochs'])
+        # else:
+        #     import pdb
+        #     pdb.set_trace()
+        
+        server_lr = hp.get("server_lr", 1)
+        mali_select_p = server.server_aggregation(aggregation_mode=hp["aggregation_mode"],
+                                  clients=participating_clients,
+                                  server_lr = server_lr,
+                                  mali_ratio=hp["attack_rate"],
+                                  mali_ids_all=mali_ids_all)
+        
+        xp.log({f"{hp['aggregation_mode']}_select_percentage": mali_select_p})
+            
         if xp.is_log_round(c_round):
             xp.log({'communication_round': c_round,
                    'epochs': c_round*hp['local_epochs']})

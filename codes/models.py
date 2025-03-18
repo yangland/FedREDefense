@@ -195,6 +195,11 @@ class BasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.downsample = downsample  # Store the downsampling module
+        if stride != 1 or in_channels != out_channels:
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
 
     def forward(self, x):
         identity = x
@@ -376,7 +381,7 @@ class Bottleneck(nn.Module):
 
 
 class ShuffleNet(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, dataset = 'cifar10'):
         super(ShuffleNet, self).__init__()
         cfg = {'out_planes': [200,400,800],'num_blocks': [4,8,4],'groups': 2}
 
@@ -688,27 +693,6 @@ def resnet18(num_classes=10, dataset = 'cifar10'):
 
 
 
-class ResNet6(nn.Module):
-    def __init__(self, num_classes=10, dataset='cifar10'):
-        super(ResNet6, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(16)
-        
-        self.layer1 = BasicBlock(16, 32, stride=2)  # First residual block
-        self.layer2 = BasicBlock(32, 64, stride=2)  # Second residual block
-        
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))  # Global Average Pooling
-        self.fc = nn.Linear(64, num_classes)
-
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.avgpool(out)
-        out = torch.flatten(out, 1)
-        return self.fc(out)
-
-
 
 class Mnist_6L(nn.Module):
     def __init__(self, num_classes=10, dataset='cifar10'):
@@ -750,22 +734,25 @@ class FireModule(nn.Module):
             torch.relu(self.expand3x3(x))
         ], dim=1)  # Ensure output remains 4D: [batch, C, H, W]
 
-class SqueezeNet(nn.Module):
-    def __init__(self, num_classes=10, dataset='cifar10'):
-        super(SqueezeNet, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
-        self.fire1 = FireModule(16, 8, 16)
-        self.fire2 = FireModule(32, 8, 16)
-        self.conv2 = nn.Conv2d(32, num_classes, kernel_size=1)
-        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)  # Ensures correct shape before flattening
+# class SqueezeNet(nn.Module):
+#     def __init__(self, num_classes=10, dataset='cifar10'):
+#         super(SqueezeNet, self).__init__()
+#         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
+#         self.fire1 = FireModule(16, 8, 16)
+#         self.fire2 = FireModule(32, 8, 16)
+#         self.conv2 = nn.Conv2d(32, num_classes, kernel_size=1)
+#         self.global_avg_pool = nn.AdaptiveAvgPool2d(1)  # Ensures correct shape before flattening
 
-    def forward(self, x):
-        x = torch.relu(self.conv1(x))
-        x = self.fire1(x)
-        x = self.fire2(x)
-        x = self.global_avg_pool(x)  # Fix: Ensure correct spatial dimensions
-        x = torch.flatten(x, 1)  # Now it’s [batch_size, num_classes]
-        return x
+#     def forward(self, x):
+#         x = torch.relu(self.conv1(x))
+#         x = self.fire1(x)
+#         x = self.fire2(x)
+#         x = self.global_avg_pool(x)  # Fix: Ensure correct spatial dimensions
+#         x = torch.flatten(x, 1)  # Now it’s [batch_size, num_classes]
+#         return x
+
+
+
 
 
 class MiniMobileNetV2(nn.Module):
@@ -829,19 +816,107 @@ class MiniMobileNetV2(nn.Module):
         return x
 
 
+class Cifar10_18L(nn.Module):
+    def __init__(self, num_classes=10, dataset='cifar10'):
+        super(Cifar10_18L, self).__init__()
+        self.conv_layer = nn.Sequential(
+            # Conv Layer block 1
+            nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+
+            # Conv Layer block 2
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Dropout2d(p=0.05),
+
+            # Conv Layer block 3
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+
+        self.fc_layer = nn.Sequential(
+            nn.Dropout(p=0.1),
+            nn.Linear(4096, 1024),
+            nn.ReLU(inplace=True),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.1),
+            nn.Linear(512, 10)
+        )
+
+    def forward(self, x):
+        """Perform forward."""
+        # conv layers
+        x = self.conv_layer(x)
+        # flatten
+        x = x.view(x.size(0), -1)
+        # fc layer
+        x = self.fc_layer(x)
+        return x
+
+
+class Svhn_6L(nn.Module):
+    def __init__(self, num_classes=10, dataset='cifar10'):
+        super(Svhn_6L, self).__init__()
+        # Convolutional layers
+                            #Init_channels, channels, kernel_size, padding) 
+        self.conv1 = nn.Conv2d(3, 16, 3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
+        
+        # Pooling layers
+        self.pool = nn.MaxPool2d(2,2)
+        
+        # FC layers
+        # Linear layer (64x4x4 -> 500)
+        self.fc1 = nn.Linear(64 * 4 * 4, 500)
+        
+        # Linear Layer (500 -> 10)
+        self.fc2 = nn.Linear(500, 10)
+        
+        # Dropout layer
+        self.dropout = nn.Dropout(0.25)
+
+    def forward(self, x):
+        x = self.pool(F.elu(self.conv1(x)))
+        x = self.pool(F.elu(self.conv2(x)))
+        x = self.pool(F.elu(self.conv3(x)))
+        
+        # Flatten the image
+        x = x.view(-1, 64*4*4)
+        x = self.dropout(x)
+        x = F.elu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
+
+
+
 def get_model(model):
 
   return  {     "mobilenetv2" : (mobilenetv2, optim.Adam, {"lr" : 0.001}),
                 "MiniMobileNetV2": (MiniMobileNetV2, optim.Adam, {"lr" : 0.001}),
-                "shufflenet" : (ShuffleNet, optim.Adam, {"lr" : 0.001}),
-                "SqueezeNet" : (SqueezeNet, optim.Adam, {"lr" : 0.001}),
-                "resnet8" : (resnet8, optim.Adam, {"lr" : 0.0001}),
-                "resnet6" : (ResNet6, optim.Adam, {"lr" : 0.0001}),
+                "shufflenet" : (ShuffleNet, optim.Adam, {"lr" : 0.001}), # ok 
+                "Cifar10_18L" : (Cifar10_18L, optim.Adam, {"lr" : 0.001}), # ok 
+                "Svhn_6L" : (Svhn_6L, optim.Adam, {"lr" : 0.001}), # ok 
+                "resnet8" : (resnet8, optim.Adam, {"lr" : 0.001}), # ok 
                 "resnet8_noskip" : (resnet8_noskip, optim.Adam, {"lr" : 0.001}),
-                "resnet18" : (resnet18, optim.Adam, {"lr" : 0.001}),
-                "ConvNet32" : (ConvNet32, optim.Adam, {"lr" : 0.001}),
-                "ConvNet" : (ConvNet, optim.Adam, {"lr" : 0.001}),
-                "Mnist_6L" : (Mnist_6L, optim.Adam, {"lr" : 0.001}),
+                "resnet18" : (resnet18, optim.Adam, {"lr" : 0.001}), # ok 
+                "ConvNet32" : (ConvNet32, optim.Adam, {"lr" : 0.001}), # ok 
+                "ConvNet" : (ConvNet, optim.Adam, {"lr" : 0.001}), # ok 
+                "Mnist_6L" : (Mnist_6L, optim.Adam, {"lr" : 0.001}), # ok 
                 "MLP" : (MLP, optim.Adam, {"lr" : 0.001}),
                 "TextModel" : (TextModel, optim.Adam, {"lr" : 1}),
                 "LogisticRegression" : (LogisticRegression, optim.Adam, {"lr" : 0.001}),

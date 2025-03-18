@@ -8,7 +8,7 @@ import torch
 import json
 import numpy as np
 import os
-
+from collections import Counter
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader, TensorDataset
 from collections import defaultdict
@@ -21,22 +21,42 @@ def split_dirichlet(labels, n_clients, n_data, alpha, double_stochstic=True, see
     if isinstance(labels, torch.Tensor):
       labels = labels.numpy()
     
+    # print("labels", labels) # all 50,000 targets
+    
     n_classes = np.max(labels)+1
-    # import pdb; pdb.set_trace()
     label_distribution = np.random.dirichlet([alpha]*n_clients, n_classes)
+    
+    # print("label_distribution1", label_distribution)
 
     if double_stochstic:
-      label_distribution = make_double_stochstic(label_distribution)
+        label_distribution = make_double_stochstic(label_distribution)
+      
+    # print("label_distribution2", label_distribution) # all 
 
     class_idcs = [np.argwhere(np.array(labels)==y).flatten() 
            for y in range(n_classes)]
 
     client_idcs = [[] for _ in range(n_clients)]
+    
+    # old distribution code
     for c, fracs in zip(class_idcs, label_distribution):
         for i, idcs in enumerate(np.split(c, (np.cumsum(fracs)[:-1]*len(c)).astype(int))):
             client_idcs[i] += [idcs]
 
     client_idcs = [np.concatenate(idcs) for idcs in client_idcs]
+    
+    # new distribution code
+    # for c, fracs in zip(class_idcs, label_distribution):
+    #     fracs = fracs / fracs.sum()  # Normalize to ensure sum is exactly 1
+    #     split_points = (np.cumsum(fracs)[:-1] * len(c)).astype(int)
+    #     split_points = np.clip(split_points, 0, len(c))  # Ensure valid indices
+    #     class_splits = np.split(c, split_points)
+
+    #     for i, idcs in enumerate(class_splits):
+    #         client_idcs[i].extend(idcs)  # Use extend instead of +=
+
+    # client_idcs = [np.array(idcs) for idcs in client_idcs]  # Convert to NumPy arrays
+    
 
     print_split(client_idcs, labels)
   
@@ -136,15 +156,23 @@ def get_data(dataset, path):
 
 
 def get_loaders(train_data, test_data, n_clients=10, alpha=0, batch_size=128, n_data=None, num_workers=0, seed=0):
-#   import pdb; pdb.set_trace()
-  subset_idcs = split_dirichlet(train_data.targets, n_clients, n_data, alpha, seed=seed)
-  client_data = [torch.utils.data.Subset(train_data, subset_idcs[i]) for i in range(n_clients)]
+    #   import pdb; pdb.set_trace()
+    subset_idcs = split_dirichlet(train_data.targets, n_clients, n_data, alpha, seed=seed)
+    client_data = [torch.utils.data.Subset(train_data, subset_idcs[i]) for i in range(n_clients)]
+    print("subset_idcs0", subset_idcs[0])
+    print("subset_idcs7", subset_idcs[7])
 
-
-  client_loaders = [torch.utils.data.DataLoader(subset, batch_size=batch_size, shuffle=True, num_workers=num_workers) for subset in client_data]
-  test_loader = torch.utils.data.DataLoader(test_data, batch_size=256, num_workers=num_workers)
-#   import pdb; pdb.set_trace()
-  return client_loaders, test_loader, client_data
+    client_loaders = [torch.utils.data.DataLoader(subset, batch_size=batch_size, shuffle=True, num_workers=num_workers) for subset in client_data]
+    test_loader = torch.utils.data.DataLoader(test_data, batch_size=256, num_workers=num_workers)
+    
+    label_counts = []
+    for subset in client_data:
+        labels = [train_data.targets[i] for i in subset.indices]
+        label_counts.append(Counter(sorted(Counter(labels).items())))
+    
+    print("label_counts", label_counts)
+    
+    return client_loaders, test_loader, client_data
 
 def get_loaders_classes(train_data, test_data, n_clients=10, alpha=0, batch_size=128, n_data=None, num_workers=0, seed=0, classes =  [0,2,4], total_num = 1500, indices=None):
     print(f"number of clients {n_clients}")
@@ -205,34 +233,34 @@ class my_subset(Dataset):
         return len(self.indices)
 
 
-def split_dirichlet(labels, n_clients, n_data, alpha, double_stochstic=True, seed=0):
-    '''Splits data among the clients according to a dirichlet distribution with parameter alpha'''
+# def split_dirichlet(labels, n_clients, n_data, alpha, double_stochstic=True, seed=0):
+#     '''Splits data among the clients according to a dirichlet distribution with parameter alpha'''
 
-    np.random.seed(seed)
+#     np.random.seed(seed)
 
-    if isinstance(labels, torch.Tensor):
-      labels = labels.numpy()
+#     if isinstance(labels, torch.Tensor):
+#       labels = labels.numpy()
     
-    n_classes = np.max(labels)+1
-    # import pdb; pdb.set_trace()
-    label_distribution = np.random.dirichlet([alpha]*n_clients, n_classes)
+#     n_classes = np.max(labels)+1
+#     # import pdb; pdb.set_trace()
+#     label_distribution = np.random.dirichlet([alpha]*n_clients, n_classes)
 
-    if double_stochstic:
-      label_distribution = make_double_stochstic(label_distribution)
+#     if double_stochstic:
+#       label_distribution = make_double_stochstic(label_distribution)
 
-    class_idcs = [np.argwhere(np.array(labels)==y).flatten() 
-           for y in range(n_classes)]
+#     class_idcs = [np.argwhere(np.array(labels)==y).flatten() 
+#            for y in range(n_classes)]
 
-    client_idcs = [[] for _ in range(n_clients)]
-    for c, fracs in zip(class_idcs, label_distribution):
-        for i, idcs in enumerate(np.split(c, (np.cumsum(fracs)[:-1]*len(c)).astype(int))):
-            client_idcs[i] += [idcs]
+#     client_idcs = [[] for _ in range(n_clients)]
+#     for c, fracs in zip(class_idcs, label_distribution):
+#         for i, idcs in enumerate(np.split(c, (np.cumsum(fracs)[:-1]*len(c)).astype(int))):
+#             client_idcs[i] += [idcs]
 
-    client_idcs = [np.concatenate(idcs) for idcs in client_idcs]
+#     client_idcs = [np.concatenate(idcs) for idcs in client_idcs]
 
-    print_split(client_idcs, labels)
+#     print_split(client_idcs, labels)
   
-    return client_idcs
+#     return client_idcs
 
 def make_double_stochstic(x):
     rsum = None

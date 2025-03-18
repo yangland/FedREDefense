@@ -224,8 +224,8 @@ class TensorDataset(Dataset):
 def get_updates(client, server):
     user_grad = {}
     server_weights = server.parameter_dict[client.model_name]    
-    for name in client.W:
-        user_grad[name] = client.W[name].detach() - server_weights[name].detach()    
+    for name in client.sd:
+        user_grad[name] = client.sd[name].detach() - server_weights[name].detach()    
     return user_grad
 
 
@@ -235,12 +235,12 @@ def get_trial_updates(mali_clients, server):
     mal_user_grad_pow = {}
     all_updates = []
     user_grad = {}
-    server_weights = server.parameter_dict[mali_clients[0].model_name]
+    server_weights = server.sd_dict[mali_clients[0].model_name]
     for id, client in enumerate(mali_clients):
         # import pdb; pdb.set_trace()
         all_updates.append([])
-        for name in client.W:
-            user_grad[name] = client.W[name].detach() - server_weights[name].detach()
+        for name in client.sd:
+            user_grad[name] = client.sd[name].detach() - server_weights[name].detach()
             # import pdb; pdb.set_trace()
             all_updates[-1].extend(user_grad[name].squeeze().view(-1).cpu().numpy())
             # import pdb; pdb.set_trace()
@@ -253,7 +253,7 @@ def get_trial_updates(mali_clients, server):
     mal_user_grad_mean2 = OrderedDict()
     mal_user_grad_std2 = OrderedDict()
 
-    for name in mali_clients[0].W:
+    for name in mali_clients[0].sd:
         mal_user_grad_mean2[name] = mal_user_grad_sum[name] / len(mali_clients)
         mal_user_grad_std2[name] = torch.sqrt(
             (mal_user_grad_pow[name] / len(mali_clients) - torch.pow(mal_user_grad_mean2[name], 2)))
@@ -1053,8 +1053,8 @@ def train_op(model, loader, optimizer, epochs, print_train_loss=False, device="c
             if print_train_loss and it == 0:
                 losses.append(round(eval_epoch(model, loader), 2))  # Ensure eval_epoch uses torch.no_grad()
 
-        if print_train_loss:
-            print(f"Epoch {ep+1}, Loss History: {losses}")
+    if print_train_loss:
+        print(f"Epoches {ep+1}, Loss History: {losses}, lr: {optimizer.param_groups[0]['lr']}")
 
     return {"loss": running_loss / samples}
 
@@ -1299,15 +1299,51 @@ def eval_op_ensemble_lp_attack(models, loader, class_num):
 def reduce_average(target, sources):
     # import pdb; pdb.set_trace()
     for name in target:
-        target[name].data = torch.mean(torch.stack([source[name].detach() for source in sources]), dim=0).clone()
-
+        target[name].data = torch.mean(torch.stack([source[name].detach().float() for source in sources]), dim=0).clone()
+    
 
 def reduce_median(target, sources):
     for name in target:
         #   import pdb; pdb.set_trace()
-        target[name].data = torch.median(torch.stack([source[name].detach() for source in sources]),
+        target[name].data = torch.median(torch.stack([source[name].detach().float() for source in sources]),
                                          dim=0).values.clone()
     #   import pdb; pdb.set_trace()
+
+def reduce_normbound(target, server_sd, clients, mali_ratio):
+    user_num = len(clients)
+    
+    server_weight = flat_dict(server_sd)
+    new_model = []
+    updates = []
+    for client in clients:
+        source = client.sd
+        new_model_i = []
+        for name in client.sd:
+            new_model_i.append(torch.flatten(source[name].detach()))
+        new_model_i = torch.cat(new_model_i)
+        updates_i = new_model_i - server_weight
+        new_model.append(new_model_i)
+        updates.append(updates_i)
+    new_model = torch.stack(new_model)
+    # updates = torch.stack(updates)
+    norm_list = [update.norm().unsqueeze(dim=0) for update in updates]
+
+    benign_norm_list = []
+    for client, norm in zip(clients, norm_list):
+        if client.id < (1 - mali_ratio) * user_num:
+            benign_norm_list.append(norm)
+    if len(benign_norm_list) != 0:
+        median_tensor = sum(benign_norm_list)/len(benign_norm_list)
+    else:
+        median_tensor = sum(norm_list)/len(norm_list)
+
+    clipped_updates = [
+        update * min(1, (median_tensor+1e-8) / (update.norm()+1e-8)) for update in updates]
+    clipped_update= torch.mean(torch.stack(clipped_updates), dim=0)
+    
+    clipped_w = restore_dict_grad_flat(clipped_update, server_sd, client.model.state_dict())
+    
+    target.load_state_dict(clipped_w)
 
 
 def reduce_trimmed_mean(target, sources, mali_ratio):
@@ -1350,7 +1386,11 @@ def flat_dict(grad_dict, layer_list=None):
     return user_flatten_grad
 
 def reduce_krum(target, sources, mali_ratio, multi_k=True):
-    krum_mal_num = math.ceil(mali_ratio * len(sources)) + 1
+    if mali_ratio !=0:
+        krum_mal_num = math.ceil(mali_ratio * len(sources)) + 1
+    else:
+        krum_mal_num = math.ceil(0.4 * len(sources)) + 1
+    
     user_num = len(sources)
     # user_flatten_grad = []
     # for source in sources:
@@ -1486,7 +1526,7 @@ def compute_robustLR(params, robustLR_threshold, server_lr):
   return sm_of_signs.to(device)
 
 
-def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
+def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, turn):
     cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6).cuda()
     cos_list=[]
     local_model_vector = []
@@ -1505,7 +1545,7 @@ def reduce_flame(target, sources, malicious, wrong_mal, right_ben, noise, turn):
             cos_i.append(cos_ij.item())
         cos_list.append(cos_i)
     num_clients = len(sources)
-    num_malicious_clients = int(malicious * num_clients)
+    num_malicious_clients = int(malicious_rate * num_clients)
     num_benign_clients = num_clients - num_malicious_clients
     # t1 = time.time()
     # plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}')
@@ -1843,7 +1883,7 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
 
 def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type):
     # print("train_type"  , train_type)
-    server_weights = server.parameter_dict[mali_clients[0].model_name]
+    server_weights = server.sd_dict[mali_clients[0].model_name]
     if train_type == "benign":
         # malicious clients train on benign datasets
         for client in mali_clients:
@@ -1854,8 +1894,8 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type
         for client in mali_clients:
             client.mal_user_grad_mean2 = mal_user_grad_mean2
             client.mal_user_grad_std2 = mal_user_grad_std2
-            for name in client.W:
-                client.benign_grad[name] = client.W[name].detach() - server_weights[name].detach()
+            for name in client.sd:
+                client.benign_grad[name] = client.sd[name].detach() - server_weights[name].detach()
             client.all_grads = all_updates  
     elif train_type == "mali":
         # malicious clients train on malicious datasets
@@ -1863,8 +1903,8 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type
             client.synchronize_with_server(server)
             mali_stats = client.compute_weight_mali_update(local_epochs)
 
-            for name in client.W:
-                client.mali_grad[name] = client.W[name].detach() - server_weights[name].detach()
+            for name in client.sd:
+                client.mali_grad[name] = client.sd[name].detach() - server_weights[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
     else:
         print("train_type should be either 'benign' or 'mali'")
@@ -1899,7 +1939,7 @@ def UAM_craft(hp, uamcc, server, participating_clients, mal_user_grad_mean2,
 
     for client in participating_clients:
         if client.id >= (1 - hp["attack_rate"]) * len(client_loaders):
-            client.W = clients_mali_grads.pop()
+            client.sd = clients_mali_grads.pop()
 
 def closest_tensor_cosine_similarity(v, tensor_set):
     """

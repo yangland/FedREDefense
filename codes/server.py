@@ -57,11 +57,18 @@ def norm_clip(nparr1, nparr2):
     return vnum / (np.linalg.norm(nparr2, ord=None, axis=None, keepdims=False) + 1e-9)
 
 
-def get_model_update(update, model):
+def get_model_update(model1, model0, multi=1):
     '''get the update weight'''
     output = OrderedDict()
-    for key, var in update.items():
-        output[key] = update[key].detach()-model[key].detach()
+    for key, var in model1.items():
+        output[key] = (model1[key].detach() - model0[key].detach()) * multi
+    return output
+
+def get_model_merged(model1, model2):
+    '''get the update weight'''
+    output = OrderedDict()
+    for key, var in model1.items():
+        output[key] = model1[key].detach() + model2[key].detach()
     return output
 
 
@@ -111,6 +118,10 @@ class Server(Device):
                                                0], num_classes=num_classes, dataset=dataset)().to(device) for model_name in model_names}
         self.parameter_dict = {model_name: {key: value for key, value in model.named_parameters(
         )} for model_name, model in self.model_dict.items()}
+        
+        self.sd_dict = {model_name: {key: value for key, value in model.state_dict(
+        ).items()} for model_name, model in self.model_dict.items()}
+        
         self.val_loader = val_loader
         self.my_client = {model_name: partial(model_utils.get_model(model_name)[
                                               0], num_classes=num_classes, dataset=dataset)().to(device) for model_name in model_names}
@@ -159,29 +170,97 @@ class Server(Device):
                 "Sample larger than population or not enough masked values.")
         return random.sample(available_clients, k)
 
+
+    def apply_krum_aggregation(self, clients, mali_ratio, multi_k, unique_client_model_names, mali_ids_all, sd1):
+        selected_clients_ids = self.krum(clients, mali_ratio, multi_k=multi_k)
+        krum_candidates = [clients[i] for i in set(selected_clients_ids)]
+        
+        for model_name in unique_client_model_names:
+            reduce_average(target=sd1, sources=[client.sd for client in krum_candidates])
+        malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids_all)
+        mali_select_p = (malicious_count / len(clients))
+        
+        return mali_select_p
+        
+    def server_aggregation(self, aggregation_mode, clients, server_lr, mali_ratio, mali_ids_all):
+        unique_client_model_names = np.unique(
+            [client.model_name for client in clients])
+        
+        mali_select_p = []
+        for model_name in unique_client_model_names:
+            # Wt = deepcopy(self.sd_dict[model_name])
+            # Wt1 = deepcopy(self.sd_dict[model_name])
+            sd0 = deepcopy(self.sd_dict[model_name])
+            sd1 = deepcopy(self.sd_dict[model_name])            
+            
+            if aggregation_mode=="FedAVG":
+                reduce_average(target=sd1, sources=[
+                           client.sd for client in clients if client.model_name == model_name])
+            elif aggregation_mode=="median":
+                reduce_median(target=sd1, sources=[
+                           client.sd for client in clients if client.model_name == model_name])
+            elif aggregation_mode=="NormBound":    
+                reduce_normbound(target=sd1, 
+                                 server_sd=self.sd_dict[model_name], 
+                                 clients=clients, 
+                                 mali_ratio=mali_ratio)
+            elif aggregation_mode == "krum":
+                mali_select_p = self.apply_krum_aggregation(clients, 
+                                            mali_ratio, 
+                                            multi_k=False, 
+                                            unique_client_model_names=unique_client_model_names, 
+                                            mali_ids_all = mali_ids_all,
+                                            sd1=sd1)
+            elif aggregation_mode == "multi-krum":
+                mali_select_p = self.apply_krum_aggregation(clients, 
+                                            mali_ratio, 
+                                            multi_k=True, 
+                                            unique_client_model_names=unique_client_model_names, 
+                                            mali_ids_all = mali_ids_all,
+                                            sd1=sd1)
+            elif aggregation_mode == "flame":
+                mali_select_p = reduce_flame(target=sd1, 
+                                           sources=[client.sd for client in clients if client.model_name == model_name],
+                                            malicious_rate=mali_ratio,
+                                            wrong_mal=0,
+                                            right_ben=0,
+                                            noise=0.001,
+                                            turn=0)
+            elif aggregation_mode == "rfa":
+                reduce_rfa(target=sd1,
+                             sources=[client.sd for client in clients if client.model_name == model_name])
+            
+            sd_final = get_model_merged(sd0, get_model_update(sd1, sd0, multi = server_lr))
+            
+            # for name, param in self.model_dict[model_name].state_dict().items():
+            #     param.data = sd_final[name].data
+            self.model_dict[model_name].load_state_dict(sd_final)
+            
+            return mali_select_p
+
     def fedavg(self, clients):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         # print("fedavg unique_client_model_names", unique_client_model_names) # ['ConvNet']
         self.weights = torch.Tensor([1. / len(clients)] * len(clients))
         for model_name in unique_client_model_names:
-            reduce_average(target=self.parameter_dict[model_name], sources=[
-                           client.W for client in clients if client.model_name == model_name])
+            reduce_average(target=self.sd_dict[model_name], sources=[
+                           client.sd for client in clients if client.model_name == model_name])
 
     def median(self, clients):
         # import pdb; pdb.set_trace()
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_median(target=self.parameter_dict[model_name], sources=[
-                          client.W for client in clients if client.model_name == model_name])
+            reduce_median(target=self.sd_dict[model_name], sources=[
+                          client.sd for client in clients if client.model_name == model_name])
 
     def TrimmedMean(self, clients, mali_ratio):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_trimmed_mean(target=self.parameter_dict[model_name], sources=[
-                                client.W for client in clients if client.model_name == model_name], mali_ratio=mali_ratio)
+            reduce_trimmed_mean(target=self.sd_dict[model_name], sources=[
+                                client.sd for client in clients if client.model_name == model_name], mali_ratio=mali_ratio)
 
     def krum(self, clients, mali_ratio, multi_k=False):
         unique_client_model_names = np.unique(
@@ -190,26 +269,20 @@ class Server(Device):
         if not multi_k:
             # run as single Krum
             for model_name in unique_client_model_names:
-                krum_candidate_indices = reduce_krum(target=self.parameter_dict[model_name], sources=[
-                            client.W for client in clients if client.model_name == model_name], mali_ratio=mali_ratio)
+                krum_candidate_indices = reduce_krum(target=self.sd_dict[model_name], 
+                                                     sources=[client.sd for client in clients if client.model_name == model_name], 
+                                                     mali_ratio=mali_ratio,
+                                                     multi_k=False)
         else:
             for model_name in unique_client_model_names:
-                print("model_name", model_name)
-                # all_w_flat = torch.stack([flat_dict(client.W) for client in clients if client.model_name == model_name])
-                # _, krum_candidate_indices = reduce_multi_krum(all_updates = all_w_flat, 
-                #                                             n_attackers = math.floor(len(clients)*mali_ratio), 
-                #                                             multi_k=True)
-                krum_candidate_indices = reduce_krum(target=self.parameter_dict[model_name], 
-                                                     sources=[client.W for client in clients if client.model_name == model_name], 
+
+                krum_candidate_indices = reduce_krum(target=self.sd_dict[model_name], 
+                                                     sources=[client.sd for client in clients if client.model_name == model_name], 
                                                      mali_ratio=mali_ratio,
                                                      multi_k=True)
                 
                 print("krum_candidate_indices", krum_candidate_indices)
-                krum_candidates = [clients[i] for i in set(krum_candidate_indices)]
-                
-                for model_name in unique_client_model_names:
-                    reduce_average(target=self.parameter_dict[model_name], sources=[
-                           client.W for client in krum_candidates])
+
         return krum_candidate_indices
 
             
@@ -226,9 +299,9 @@ class Server(Device):
         new_model = []
         updates = []
         for client in clients:
-            source = client.W
+            source = client.sd
             new_model_i = []
-            for name in client.W:
+            for name in client.sd:
                 new_model_i.append(torch.flatten(source[name].detach()))
             new_model_i = torch.cat(new_model_i)
             updates_i = new_model_i - weight
@@ -249,30 +322,31 @@ class Server(Device):
         # import pdb; pdb.set_trace()
         clipped_models = [
             update * min(1, (median_tensor+1e-8) / (update.norm()+1e-8)) for update in updates]
-        clipped_models = torch.mean(torch.stack(clipped_models), dim=0)
+        clipped_model = torch.mean(torch.stack(clipped_models), dim=0)
+        
         for model_name in unique_client_model_names:
             idx = 0
-            for name in self.parameter_dict[model_name]:
-                self.parameter_dict[model_name][name].data = self.parameter_dict[model_name][name].data + clipped_models[idx:(
-                    idx+self.parameter_dict[model_name][name].data.numel())].reshape(self.parameter_dict[model_name][name].data.shape)
-                idx += self.parameter_dict[model_name][name].data.numel()
+            for name in self.sd_dict[model_name]:
+                self.sd_dict[model_name][name].data = self.sd_dict[model_name][name].data + clipped_model[idx:(
+                    idx+self.sd_dict[model_name][name].data.numel())].reshape(self.sd_dict[model_name][name].data.shape)
+                idx += self.sd_dict[model_name][name].data.numel()
 
     # adding RLR aggregation rule from FLAME (https://github.com/zhmzm/FLAME)
     def RLR(self, clients, robustLR_threshold):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_RLR(target=self.parameter_dict[model_name],
+            reduce_RLR(target=self.sd_dict[model_name],
                        sources=[
-                           client.W for client in clients if client.model_name == model_name],
+                           client.sd for client in clients if client.model_name == model_name],
                        robustLR_threshold=robustLR_threshold)
 
-    def flame(self, clients, malicious, wrong_mal, right_ben, noise, turn):
+    def flame(self, clients, malicious_rate, wrong_mal, right_ben, noise, turn):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            mali_select_p=reduce_flame(target=self.parameter_dict[model_name], sources=[client.W for client in clients if client.model_name == model_name],
-                                        malicious=malicious,
+            mali_select_p=reduce_flame(target=self.sd_dict[model_name], sources=[client.sd for client in clients if client.model_name == model_name],
+                                        malicious_rate=malicious_rate,
                                         wrong_mal=wrong_mal,
                                         right_ben=right_ben,
                                         noise=noise,
@@ -283,8 +357,8 @@ class Server(Device):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_foolsgold(target=self.parameter_dict[model_name],
-                             sources=[client.W for client in clients if client.model_name == model_name])
+            reduce_foolsgold(target=self.sd_dict[model_name],
+                             sources=[client.sd for client in clients if client.model_name == model_name])
 
 
 
@@ -296,16 +370,16 @@ class Server(Device):
         
         unique_client_model_names = np.unique([client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_fltrust(  target=self.parameter_dict[model_name],
-                             sources=[client.W for client in clients if client.model_name == model_name],
+            reduce_fltrust(  target=self.sd_dict[model_name],
+                             sources=[client.sd for client in clients if client.model_name == model_name],
                              server_update= server_update)
 
     def rfa(self, clients):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_rfa(target=self.parameter_dict[model_name],
-                             sources=[client.W for client in clients if client.model_name == model_name])        
+            reduce_rfa(target=self.sd_dict[model_name],
+                             sources=[client.sd for client in clients if client.model_name == model_name])        
 
 # add a special Server class malicious command center
 class MaliCC(Device):
@@ -319,6 +393,7 @@ class MaliCC(Device):
                                 0], num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=1)

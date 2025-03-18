@@ -46,13 +46,14 @@ class Client(Device):
                                 0], num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
         
-        # pointer, auto updated when model is updated
+        # named parameters, with gradient
         self.W = {key: value for key, value in self.model.named_parameters()}
+        # state_dict, without gradient
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        
-        print("client optimizer", self.optimizer )
+
         self.benign_grad = dict()
 
     def synchronize_with_server(self, server):
@@ -95,6 +96,7 @@ class Client_flip(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -138,6 +140,7 @@ class Client_tr_flip(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -181,6 +184,7 @@ class Client_MinMax(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -280,6 +284,7 @@ class Client_MinSum(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -413,6 +418,7 @@ class Client_Krum(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -497,6 +503,7 @@ class Client_Fang(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -587,6 +594,7 @@ class Client_MPAF(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -635,6 +643,7 @@ class Client_Scaling(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -687,6 +696,7 @@ class Client_DBA(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -737,6 +747,7 @@ class Client_AOP(Device):
         self.model = self.model_fn().to(device)
         self.num_classes = num_classes
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -833,12 +844,13 @@ class Client_UtCos(Device):
                                 num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.benign_grad = dict()
         self.mali_grad = dict()
-        self.W = {key: value for key, value in self.model.named_parameters()}
+        
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -865,6 +877,7 @@ class Client_UAM(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
+        self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
