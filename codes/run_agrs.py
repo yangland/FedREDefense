@@ -228,7 +228,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     test_accs = []
 
     logger.info(f"model key {list(server.model_dict.keys())[0]}")
-
+    logger.info(f"Save results to: {args.SUBRESULTS_PATH}/logfile_{exp_id}")
+    
     # In each FL communication round
     for c_round in range(1, hp["communication_rounds"]+1):
         logger.info(f"---iter{c_round}/{hp['communication_rounds']}----")
