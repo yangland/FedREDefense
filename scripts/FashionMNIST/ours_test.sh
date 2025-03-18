@@ -35,7 +35,8 @@ hyperparameters04='[{
     "lambda_": [1],
     "beta_": [0.4],
     "adv_lr": [0.005],
-    "percentile": [25]
+    "percentile": [25],
+    "server_lr": [1.0]
     }]'
 
 
