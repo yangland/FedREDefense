@@ -173,7 +173,7 @@ class Server(Device):
 
     def apply_krum_aggregation(self, clients, mali_ratio, multi_k, unique_client_model_names, mali_ids_all, sd1):
         selected_clients_ids = self.krum(clients, mali_ratio, multi_k=multi_k)
-        krum_candidates = [clients[i] for i in set(selected_clients_ids)]
+        krum_candidates = [clients[i] for i in list(set(selected_clients_ids))]
         
         for model_name in unique_client_model_names:
             reduce_average(target=sd1, sources=[client.sd for client in krum_candidates])
