@@ -1424,7 +1424,7 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
         select_ui = select_ui[0]
         for name in target:
             target[name].data = sources[select_ui][name].detach().clone()
-
+        select_ui = [select_ui]
     # multi k's FedAvg
     return select_ui
 

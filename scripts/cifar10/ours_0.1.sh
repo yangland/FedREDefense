@@ -1,7 +1,7 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "rfa"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='2'
+export CUDA_VISIBLE_DEVICES='5'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
