@@ -228,7 +228,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     test_accs = []
 
     logger.info(f"model key {list(server.model_dict.keys())[0]}")
-    logger.info(f"Save results to: {args.SUBRESULTS_PATH}/logfile_{exp_id}")
+
     
     # In each FL communication round
     for c_round in range(1, hp["communication_rounds"]+1):
@@ -356,17 +356,18 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             test_accs.append(stats['test_accuracy'])
 
             # Save results to Disk
-            xp.save_to_disc(path=args.SUBRESULTS_PATH, name=str(exp_id))
+            saved_path = xp.save_to_disc(path=args.SUBRESULTS_PATH, name=str(exp_id))
             e = int((time.time()-t1)/c_round *
                     (hp['communication_rounds']-c_round))
             print("Remaining Time (approx.):", '{:02d}:{:02d}:{:02d}'.format(e // 3600, (e % 3600 // 60), e % 60),
                   "[{:.2f}%]\n".format(c_round/hp['communication_rounds']*100))
             logger.info(f"exp total running time: {datetime.timedelta(seconds=(time.time() - t0))}")
+            logger.info(f"Saved results to: {saved_path}")
     
     # Save model to disk
     server.save_model(path=args.SUBRESULTS_PATH, name=str(exp_id) + ".pt", if_save=hp["save_model"])
 
-    logger.info(f"Saved results to: {args.SUBRESULTS_PATH}/logfile_{exp_id}")
+    
     
     # Delete objects to free up GPU memory
     del server

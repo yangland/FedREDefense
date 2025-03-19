@@ -170,7 +170,7 @@ def get_loaders(train_data, test_data, n_clients=10, alpha=0, batch_size=128, n_
         labels = [train_data.targets[i] for i in subset.indices]
         label_counts.append(Counter(sorted(Counter(labels).items())))
     
-    print("label_counts", label_counts)
+    # print("label_counts", label_counts)
     
     return client_loaders, test_loader, client_data
 
