@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 
 def save_results(results_dict, path, name, verbose=True):
     # print("results_dict", results_dict)
-    results_numpy = {key : np.array(value) for key, value in results_dict.items()}
-    # print("save_results path", path)
+    results_numpy = {key: list(value) if isinstance(value, (list, tuple, np.ndarray)) else value 
+                 for key, value in results_dict.items()}
+
     if not os.path.exists(path):
         os.makedirs(path)
     np.savez(os.path.join(path, name), **results_numpy) 

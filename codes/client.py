@@ -765,14 +765,13 @@ class Client_AOP(Device):
         self.ben_cos_std = None
         self.pool_mali_grad = None
         self.mali_mean = None
-        self.server_w = None
         self.critical_layer = None
         self.uniformed_att = False
 
     def synchronize_with_server(self, server):
-        self.server_state = server.model_dict[self.model_name].state_dict()
-        self.server_w = {key: value for key, value in server.model_dict[self.model_name].named_parameters()}
-        self.model.load_state_dict(self.server_state, strict=False)
+        server_state = server.model_dict[self.model_name].state_dict()
+        self.server_state = server_state
+        self.model.load_state_dict(server_state, strict=False)
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(
@@ -798,23 +797,11 @@ class Client_AOP(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        # benign_g = self.benign_grad
-        # mali_g = self.mali_grad
         benign_g = self.mal_user_grad_mean2
         mali_g = self.mali_mean
-        
-        # budget_1sigma = (1 - self.ben_cos_med) + self.ben_cos_std * 1
-        # budget_med = 1 - self.ben_cos_med
-        # budget_mean = 1 - self.ben_cos_mean
         budget_ben_to_mean = 1 - self.ben_cos_to_mean
         
-        # craft_g, k = craft_mali_weighted_avg(ben_g=benign_g, 
-        #                                     mali_g=mali_g,
-        #                                     budget=budget_ben_to_mean, 
-        #                                     measure="cos")
 
-        # print("len craft_g", len(craft_g)) # 4902090
-        # print("self.server_w", len(flat_dict(self.server_w))) # 4902090
         
         craft_g, k = craft_critical_layer(ben_g=benign_g, 
                                             mali_g=mali_g,
@@ -822,7 +809,7 @@ class Client_AOP(Device):
                                             measure="cos",
                                             critical_layer=self.critical_layer)
         
-        restored_crafted = restore_dict_grad_dict(craft_g, self.server_w, self.server_state)
+        restored_crafted = restore_dict_grad_dict(craft_g, self.server_state, self.server_state)
         
         self.model.load_state_dict(restored_crafted)
         logger.info(f"client ID: {self.id}, k tops: {k}")

@@ -411,31 +411,12 @@ class MaliCC(Device):
         self.sub_loader = None
         self.data = data
         self.server_state = None
-        self.server_w = None
 
     def reset_lr(self, new_lr):
         self.scheduler._step_count = 0
         self.scheduler.last_epoch = -1  
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = new_lr  # Set to your desired value
-    
-
-    # def get_sub_dataloader(self, size):
-    #     # Assuming you have a dataset
-    #     dataset_size = len(self.data)
-    #     assert size<=dataset_size, "size should be less than dataset size"
-    #     indices = list(range(dataset_size))
-
-    #     # Shuffle and select one client's data size * mult
-    #     np.random.shuffle(indices)
-    #     split = int(size)
-    #     train_indices = indices[:split]
-
-    #     # Use SubsetRandomSampler
-    #     train_sampler = SubsetRandomSampler(train_indices)
-    #     sub_loader = DataLoader(self.data, batch_size=32, sampler=train_sampler)
-    #     return sub_loader
-    
 
 
     def get_sub_dataloader(self, size):
@@ -499,10 +480,11 @@ class MaliCC(Device):
             print("objective unknown")
         return feedback
             
+        
     def synchronize_with_server(self, server):
-        self.server_state = server.model_dict[self.model_name].state_dict()
-        self.server_w = {key: value for key, value in server.model_dict[self.model_name].named_parameters()}
-        self.model.load_state_dict(self.server_state, strict=False)
+        server_state = server.model_dict[self.model_name].state_dict()
+        self.server_state = server_state
+        self.model.load_state_dict(server_state, strict=False)
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(

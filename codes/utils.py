@@ -236,12 +236,12 @@ def get_trial_updates(mali_clients, server):
     mal_user_grad_pow = {}
     all_updates = []
     user_grad = {}
-    server_weights = server.sd_dict[mali_clients[0].model_name]
+    server_sd = server.sd_dict[mali_clients[0].model_name]
     for id, client in enumerate(mali_clients):
         # import pdb; pdb.set_trace()
         all_updates.append([])
         for name in client.sd:
-            user_grad[name] = client.sd[name].detach() - server_weights[name].detach()
+            user_grad[name] = client.sd[name].detach() - server_sd[name].detach()
             # import pdb; pdb.set_trace()
             all_updates[-1].extend(user_grad[name].squeeze().view(-1).cpu().numpy())
             # import pdb; pdb.set_trace()
@@ -875,9 +875,9 @@ def replace_topk_budget_l2(a: torch.Tensor, b: torch.Tensor, delta: torch.Tensor
     return best_c.view(a.shape), mid / len(sorted_indices) * 100
 
 
-def restore_dict_grad_flat(flat_grad, server_w, model_dict):
+def restore_dict_grad_flat(flat_grad, server_sd, model_dict):
     state_dict_keys = set(model_dict.keys())
-    param_dict_keys = set(server_w.keys())
+    param_dict_keys = set(server_sd.keys())
     
     missing_keys = state_dict_keys - param_dict_keys    
     print("missing_keys", missing_keys)
@@ -893,16 +893,16 @@ def restore_dict_grad_flat(flat_grad, server_w, model_dict):
             # print("flat_grad", flat_grad.size())
             # print("flat_grad[start:start + num_elements].view(param.shape)", flat_grad[start:start + num_elements].view(param.shape).size())
             # print("server_w[name]", server_w[name].size())
-            restored_w[name] = flat_grad[start:start + num_elements].view(param.shape) + server_w[name]                         
+            restored_w[name] = flat_grad[start:start + num_elements].view(param.shape) + server_sd[name]                         
             start += num_elements
         else:
             restored_w[name] = model_dict[name]
     return restored_w
 
 
-def restore_dict_grad_dict(grad_dict, server_w, model_dict):
+def restore_dict_grad_dict(grad_dict, server_sd, model_dict):
     state_dict_keys = set(model_dict.keys())
-    param_dict_keys = set(server_w.keys())
+    param_dict_keys = set(server_sd.keys())
     
     # print("state_dict_keys", state_dict_keys)
     # print("param_dict_keys", param_dict_keys)
@@ -917,7 +917,7 @@ def restore_dict_grad_dict(grad_dict, server_w, model_dict):
         if name not in missing_keys:
             # print(grad_dict[name].shape, server_w[name].shape)
 
-            restored_w[name] = grad_dict[name] + server_w[name]                           
+            restored_w[name] = grad_dict[name] + server_sd[name]                           
 
         else:
             restored_w[name] = model_dict[name]
@@ -1871,9 +1871,9 @@ def get_mali_clients_this_round(participating_clients, client_loaders, attack_ra
     return mali_clients, mali_ids
 
 
-def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type):
+def mali_clients_get_updates(mali_clients, server, local_epochs, train_type):
     # print("train_type"  , train_type)
-    server_weights = server.sd_dict[mali_clients[0].model_name]
+    server_sd = server.sd_dict[mali_clients[0].model_name]
     if train_type == "benign":
         # malicious clients train on benign datasets
         for client in mali_clients:
@@ -1885,7 +1885,7 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type
             client.mal_user_grad_mean2 = mal_user_grad_mean2
             client.mal_user_grad_std2 = mal_user_grad_std2
             for name in client.sd:
-                client.benign_grad[name] = client.sd[name].detach() - server_weights[name].detach()
+                client.benign_grad[name] = client.sd[name].detach() - server_sd[name].detach()
             client.all_grads = all_updates  
     elif train_type == "mali":
         # malicious clients train on malicious datasets
@@ -1894,7 +1894,7 @@ def mali_client_get_trial_updates(mali_clients, server, local_epochs, train_type
             mali_stats = client.compute_weight_mali_update(local_epochs)
 
             for name in client.sd:
-                client.mali_grad[name] = client.sd[name].detach() - server_weights[name].detach()
+                client.mali_grad[name] = client.sd[name].detach() - server_sd[name].detach()
         mal_user_grad_mean2, mal_user_grad_std2, all_updates = get_trial_updates(mali_clients, server)
     else:
         print("train_type should be either 'benign' or 'mali'")

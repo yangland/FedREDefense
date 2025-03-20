@@ -26,21 +26,20 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     acc_results0 = malicc.feedback_on_attack(class_num=10).items()
     
     # Compute cosine distances and log statistics
-    all_w = torch.stack([flat_dict(client.W) for client in mali_clients])
-    print(f"all_w shape {all_w.shape}")
+    all_w = torch.stack([flat_dict(filter_trainable_state_dict(client.model)) for client in mali_clients])
+    print(f"all_state_dict shape {all_w.shape}")
     
     # Compute the median norm of benign clients
     norm_list = np.array([torch.norm(torch.tensor(grad), p=2).item() for grad in ben_grad_all])
     benign_norm = np.median(norm_list)
     
-    print(f"benign norm {benign_norm}")
-    
     # Initialize benign mean model
     ben_mean_model = adhoc_model_fn().to(device)
     # Restore benign mean weights and load into model
-    benign_mean_sd = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.server_w, malicc.model.state_dict())
+    benign_mean_sd = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.server_state, malicc.model.state_dict())
     ben_mean_model.load_state_dict(benign_mean_sd)
-    benign_mean_w = state_dict_to_w(sd = benign_mean_sd, w = malicc.server_w)
+    # measure cos using trainable parameters w, instead of sd
+    benign_mean_w = filter_trainable_state_dict(ben_mean_model)
     
     cos_mean, cos_med, cos_std, cos_precentile, cos_to_mean = cos_pairs_and_mean(all_w, benign_mean_w, percentile=percentile)
     xp.log({"cos_mean": cos_mean, 
@@ -50,11 +49,10 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
             "mean_cos_to_mean": cos_to_mean})
     
     # Prepare malicious client for attack
-    # malicc.sub_loader = malicc.get_sub_dataloader(mult=min(2, malicc.data_multiplier))
     malicc.reset_lr(new_lr=adv_lr)
     
     # Compute attack budget
-    budget = max(1e-5, (1 - cos_mean))
+    budget = max(1e-5, (1 - cos_precentile))
     
     # malicc model load benign mean weights
     malicc.model.load_state_dict(benign_mean_sd)
@@ -62,8 +60,15 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     acc_benign_mean = malicc.feedback_on_attack(class_num=10).items()
     
     # Update malicious weights
-    train_rev_w_cos(malicc.model, malicc.sub_loader, malicc.optimizer, malicc.scheduler, epochs=K, 
-                    model0=model0, model1=ben_mean_model, beta=beta_, budget=budget)
+    loss_dict, crafted_w_cos = train_rev_w_cos(model = malicc.model, 
+                                            loader = malicc.sub_loader, 
+                                            optimizer = malicc.optimizer, 
+                                            scheduler = malicc.scheduler, 
+                                            epochs = K, 
+                                            model0 = model0, 
+                                            model1 = ben_mean_model, 
+                                            beta = beta_, 
+                                            budget = budget)
 
     # Evaluate attack progress
     acc_results1 = malicc.feedback_on_attack(class_num=10).items()
@@ -81,29 +86,31 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     
     # Compute and normalize malicious gradient update
     mali_grad = get_model_update(malicc.sd, malicc.server_state)
+    mali_grad_norm = torch.norm(flat_dict(mali_grad), p=2)
+    # print(f"benign norm {benign_norm}, mali norm {mali_grad_norm}")
+    xp.log({"benign norm": float(benign_norm)})
+    xp.log({"mali grad norm": float(mali_grad_norm)})
     
-    mali_grad_norm = torch.norm(parameters_dict_to_vector(mali_grad), p=2)
-    print(f"benign norm {benign_norm}, mali norm {mali_grad_norm}")
-    norm_mali_flat = flat_dict(mali_grad) / torch.norm(flat_dict(mali_grad), p=2) * benign_norm 
+    norm_mali_flat = flat_dict(mali_grad) / mali_grad_norm * benign_norm 
     
     if torch.isnan(norm_mali_flat).any():
         print("crafted normalized_mali_flat has NA values!")
         
     # Scale with lambda and update model
-    mali_sd2 = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+    mali_sd = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
 
-    model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_sd2.values()]).any().item()
+    model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_sd.values()]).any().item()
     if model_has_nan:
         print("crafted model weight has NA values!")
         
-    sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd2), eps=1e-9)
+    sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
     
-    malicc.model.load_state_dict(mali_sd2, strict=False)
+    malicc.model.load_state_dict(mali_sd, strict=False)
     
     # Evaluate final attack results
     acc_results2 = malicc.feedback_on_attack(class_num=10).items()
     
-    return budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd2, float(sd_cos)
+    return budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd, float(sd_cos), float(crafted_w_cos)
 
 
 def stable_log_cosh_cross_entropy_loss(preds, targets):
@@ -126,7 +133,7 @@ def safe_cross_entropy(logits, labels):
 
 def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
     model.train()
-    # model.parameters need to use 
+    # model.parameters need to use, no state_dict, the trainable parameters
     flat_w0 = flat_dict(filter_trainable_state_dict(model0))
     flat_w1 = flat_dict(filter_trainable_state_dict(model1))
     
@@ -135,7 +142,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     print(f"data length {len(loader) * loader.batch_size}: batches {len(loader)}, batch_size {loader.batch_size}")
     
     # initial as the server model
-    last_mail_w = flat_w0.clone().detach()
+    latest_w = flat_w0.clone().detach()
     for ep in range(epochs):
         for it, (x, y) in enumerate(loader):
             if it % 2 == 0:
@@ -171,8 +178,6 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             if it % 5 == 0:
                 print(f"ep{ep}, loss_ce: {loss_oppo_ce:.2f}, loss_cos: {loss_cos:.6f}, loss_obj: {loss_obj:.2f}, lr: {optimizer.param_groups[0]['lr']}")
         
-        # break
-        # crafted_cos_d = cos_dist_w(flat_w1, w)
         crafted_cos_d = 1 - F.cosine_similarity(flat_w1, w, dim=0, eps=1e-12)
         print(f"cos_d: {crafted_cos_d}, budget: {budget}")
 
@@ -180,20 +185,16 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             print(f"budget exceeded, finish training early, ep = {ep}")
             break
         
-        last_mail_w = w
+        latest_w = w
         
     # craft between last_mail_w and the current iteration w
-    # craft_w = craft_tensor(B=flat_w0, M1=last_mail_w, M2=w, k=budget)
-    craft_w = craft_tensor(B=flat_w1, M1=last_mail_w, M2=w, k=budget)
-    
-    # restored_crafted = restore_dict_grad_flat(craft_w, model0.state_dict(), model.state_dict())
+    craft_w = craft_tensor(B=flat_w1, M1=latest_w, M2=w, k=budget)
     restored_crafted = restore_dict_w_flat(craft_w, model1)
     model.load_state_dict(restored_crafted)
-    crafted_cos_d = 1 - F.cosine_similarity(flat_w1, craft_w, dim=0, eps=1e-12) 
-        
-    print(f"crafted cos_d: {crafted_cos_d}")        
+    
+    crafted_cos_d = 1 - F.cosine_similarity(flat_w1, craft_w, dim=0, eps=1e-12)     
 
-    return {"loss": running_loss / samples}
+    return {"loss": running_loss / samples}, crafted_cos_d
 
 
 def restore_dict_w_flat(param_flat, model):

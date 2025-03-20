@@ -61,7 +61,7 @@ if not os.path.exists(args.SUBRESULTS_PATH):
     os.makedirs(args.SUBRESULTS_PATH)
 
 master_csv_header = ["exp_num", "exp_id", "dataset", "alpha", "attack_method",  "attack_rate", "agr", "acc"]
-master_csv = CsvLogging(f"master", args.SUBRESULTS_PATH, master_csv_header)
+master_csv = CsvLogging(f"exp_summary", args.SUBRESULTS_PATH, master_csv_header)
 
 def detection_metric_per_round(real_label, label_pred):
     nobyz = sum(real_label)
@@ -251,20 +251,24 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 participating_clients, client_loaders, hp["attack_rate"])
             
             mal_user_grad_ben_mean, mal_user_grad_ben_std, ben_grad_all = \
-                mali_client_get_trial_updates(
+                mali_clients_get_updates(
                     mali_clients, server, hp["local_epochs"], train_type="benign")
             
             print("mali clients benign training - finished")
             
-                
+            
             if hp["attack_method"] == "untargeted_cos":
-                budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_w, sd_cos = \
+                budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd, sd_cos, w_cos = \
                                 untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, 
-                                mal_user_grad_ben_mean, model_name, num_classes, xp, hp, K=6, beta_=hp["beta_"], 
-                                lambda_=hp["lambda_"], adv_lr = hp["adv_lr"], percentile=hp["percentile"])
+                                mal_user_grad_ben_mean, model_name, num_classes, xp, hp,
+                                K = hp.get("ours_K", 6),
+                                beta_ = hp["beta_"], 
+                                lambda_ = hp["lambda_"], 
+                                adv_lr = hp["adv_lr"], 
+                                percentile = hp["percentile"])
                 
                 for client in mali_clients:
-                    client.model.load_state_dict(mali_w)
+                    client.model.load_state_dict(mali_sd)
                 
                 xp.log({"vali_server": next(iter(acc_results0))[1]})
                 xp.log({"acc_benign_mean": next(iter(acc_benign_mean))[1]})
@@ -272,6 +276,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 xp.log({"mali_vali_norm_acc": next(iter(acc_results2))[1]})
                 xp.log({"attack_budget": budget})
                 xp.log({"state_dict_cos": sd_cos})
+                xp.log({"trainable_params_cos": w_cos})
                 
                 
         # Both benign and malicous clients compute weight update
@@ -323,7 +328,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                   mali_ids_all=mali_ids_all)
         
         xp.log({f"select_percentage": mali_select_p})
-        xp.log({f"select_ids": selected_clients_ids})
+        xp.log({"select_ids": {c_round: selected_clients_ids}})
             
         if xp.is_log_round(c_round):
             xp.log({'communication_round': c_round,
@@ -358,7 +363,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             stats = server.evaluate_ensemble()
             test_accs.append(stats['test_accuracy'])
 
-            # Save results to Disk
+            
             saved_path = xp.save_to_disc(path=args.SUBRESULTS_PATH, id=exp_id)
             e = int((time.time()-t1)/c_round *
                     (hp['communication_rounds']-c_round))
