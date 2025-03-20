@@ -1,13 +1,13 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
-export CUDA_VISIBLE_DEVICES='7'
+export CUDA_VISIBLE_DEVICES='4'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
     "models" : [{"resnet18": 100}],
 
-    "attack_rate" :  [0, 0.1, 0.25, 0.4],
+    "attack_rate" :  [ 0.25 ],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
@@ -38,6 +38,7 @@ hyperparameters04='[{
     "percentile": [25],
     "server_lr": [1.0]
     }]'
+    
 
 
 RESULTS_PATH="results/"

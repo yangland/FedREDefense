@@ -68,8 +68,20 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     # Evaluate attack progress
     acc_results1 = malicc.feedback_on_attack(class_num=10).items()
     
+    # check if the malicc model has nan or inf
+    for param in malicc.model.parameters():
+        if torch.isnan(param).any():
+            print(f"NaN detected in {param.shape}")
+        if torch.isinf(param).any():
+            print(f"Inf detected in {param.shape}")
+        
+        # Clamp values after the check
+        param.data.clamp_(-1e6, 1e6)  # In-place operation
+    
+    
     # Compute and normalize malicious gradient update
-    mali_grad = get_model_update(malicc.model.state_dict(), malicc.server_state)
+    mali_grad = get_model_update(malicc.sd, malicc.server_state)
+    
     mali_grad_norm = torch.norm(parameters_dict_to_vector(mali_grad), p=2)
     print(f"benign norm {benign_norm}, mali norm {mali_grad_norm}")
     norm_mali_flat = flat_dict(mali_grad) / torch.norm(flat_dict(mali_grad), p=2) * benign_norm 
@@ -100,6 +112,18 @@ def stable_log_cosh_cross_entropy_loss(preds, targets):
     return torch.mean(stable_loss)
 
 
+def safe_cross_entropy(logits, labels):
+    """Compute cross-entropy safely, avoiding NaN issues."""
+    if torch.isnan(logits).any() or torch.isinf(logits).any():
+        print("NaN or Inf detected in logits! Clamping values...")
+        logits = torch.clamp(logits, min=-1e6, max=1e6)
+
+    logits = logits - logits.max(dim=1, keepdim=True)[0]  # Logits shifting for stability
+    labels = labels.long()  # Ensure correct label type
+
+    return torch.nn.CrossEntropyLoss()(logits, labels)
+
+
 def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
     model.train()
     # model.parameters need to use 
@@ -120,7 +144,8 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
             optimizer.zero_grad()
             
             # 1 negative CE loss
-            loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
+            # loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
+            loss_ce = safe_cross_entropy(model(x), y)
             loss_oppo_ce = - loss_ce
 
             running_loss += loss_oppo_ce.item() * y.shape[0]
@@ -147,7 +172,8 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
                 print(f"ep{ep}, loss_ce: {loss_oppo_ce:.2f}, loss_cos: {loss_cos:.6f}, loss_obj: {loss_obj:.2f}, lr: {optimizer.param_groups[0]['lr']}")
         
         # break
-        crafted_cos_d = cos_dist_w(flat_w1, w)
+        # crafted_cos_d = cos_dist_w(flat_w1, w)
+        crafted_cos_d = 1 - F.cosine_similarity(flat_w1, w, dim=0, eps=1e-12)
         print(f"cos_d: {crafted_cos_d}, budget: {budget}")
 
         if crafted_cos_d > budget:
@@ -163,7 +189,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     # restored_crafted = restore_dict_grad_flat(craft_w, model0.state_dict(), model.state_dict())
     restored_crafted = restore_dict_w_flat(craft_w, model1)
     model.load_state_dict(restored_crafted)
-    crafted_cos_d = cos_dist_w(flat_w1, craft_w)
+    crafted_cos_d = 1 - F.cosine_similarity(flat_w1, craft_w, dim=0, eps=1e-12) 
         
     print(f"crafted cos_d: {crafted_cos_d}")        
 

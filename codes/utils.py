@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 import random
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+
 # from geom_median.torch import compute_geometric_median
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -1386,20 +1387,8 @@ def flat_dict(grad_dict, layer_list=None):
     return user_flatten_grad
 
 def reduce_krum(target, sources, mali_ratio, multi_k=True):
-    if mali_ratio !=0:
-        krum_mal_num = math.ceil(mali_ratio * len(sources)) + 1
-    else:
-        krum_mal_num = math.ceil(0.4 * len(sources)) + 1
-    
+    krum_mal_num = math.ceil(mali_ratio * len(sources)) + 1
     user_num = len(sources)
-    # user_flatten_grad = []
-    # for source in sources:
-    #     user_flatten_grad_i = []
-    #     for name in target:
-    #         user_flatten_grad_i.append(torch.flatten(source[name].detach()))
-    #     user_flatten_grad_i = torch.cat(user_flatten_grad_i)
-    #     user_flatten_grad.append(user_flatten_grad_i)
-    # user_flatten_grad = torch.stack(user_flatten_grad)
     user_flatten_grad = flat_grad(target, sources)
 
     # compute l2 distance between users
@@ -1417,7 +1406,8 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     sm_user_scores = torch.sum(topk_user_scores, dim=1)
 
     # users with smallest score is selected as update gradient
-    u_score, select_ui = torch.topk(sm_user_scores, k=krum_mal_num, largest=False)
+    # u_score, select_ui = torch.topk(sm_user_scores, k=krum_mal_num, largest=False)
+    u_score, select_ui = torch.topk(sm_user_scores, k=user_num - krum_mal_num - 2, largest=False)
     select_ui = select_ui.cpu().numpy()
     
     if not multi_k:
@@ -2159,17 +2149,18 @@ def craft_tensor(B, M1, M2, k):
 
 
 
+
+
 def cos_dist_w(w1, w2, eps=1e-9):
-    """Compute cosine distance between two flattened weight tensors"""
-    cos = nn.CosineSimilarity(dim=0, eps=eps)
-    w1_flat = torch.cat([p.view(-1) for p in w1]).to(device)
-    w2_flat = torch.cat([p.view(-1) for p in w2]).to(device)
-    
-    # Cosine similarity computation
-    cosine_similarity = cos(w1_flat, w2_flat)
-    
-    # Return cosine distance
+    """Compute cosine distance between two flattened weight tensors efficiently"""
+    w1_flat = torch.flatten(w1).to(device)
+    w2_flat = torch.flatten(w2).to(device)
+
+    # Compute cosine similarity directly
+    cosine_similarity = F.cosine_similarity(w1_flat, w2_flat, dim=0, eps=eps)
+
     return 1 - cosine_similarity
+
 
 
 def filter_trainable_state_dict(model):
