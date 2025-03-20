@@ -11,8 +11,8 @@ hyperparameters04='[{
     "attack_method": ["NO"],
     "participation_rate" : [1],
 
-    "alpha" : [0.05],
-    "communication_rounds" : [500],
+    "alpha" : [0.05, 0.5],
+    "communication_rounds" : [2],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],

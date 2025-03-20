@@ -13,12 +13,15 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from scipy.spatial.distance import cdist, pdist
 import logging
+import shutil
+import datetime
+from csv_logging import CsvLogging
 from our_attack import *
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
 logger = logging.getLogger("logger")
-import datetime
+
 
 channel_dict = {
     "cifar10": 3,
@@ -57,6 +60,8 @@ args.SUBRESULTS_PATH = os.path.join(args.RESULTS_PATH, curr_time)
 if not os.path.exists(args.SUBRESULTS_PATH):
     os.makedirs(args.SUBRESULTS_PATH)
 
+master_csv_header = ["exp_num", "exp_id", "dataset", "noniid_alpha", "attack_method",  "attack_rate", "agr", "acc"]
+master_csv = CsvLogging(f"master", args.SUBRESULTS_PATH, master_csv_header)
 
 def detection_metric_per_round(real_label, label_pred):
     nobyz = sum(real_label)
@@ -275,43 +280,40 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             client.synchronize_with_server(server)
             train_stats = client.compute_weight_update(hp["local_epochs"])
 
-        # def log_krum_selection(mode, multi_k):
-        #     selected_clients_ids = server.krum(participating_clients, hp["attack_rate"], multi_k=multi_k)
-        #     malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids_all)
-        #     mali_select_p = (malicious_count / len(participating_clients))
-        #     xp.log({f"{mode}_select_percentage": mali_select_p})
 
 
-        # # server aggregation
-        # if hp["aggregation_mode"] == "FedAVG":
-        #     server.fedavg(participating_clients)
-        # elif hp["aggregation_mode"] == "ABAVG":
-        #     server.abavg(participating_clients)
-        # elif hp["aggregation_mode"] == "median":
-        #     server.median(participating_clients)
-        # elif hp["aggregation_mode"] == "NormBound":
-        #     server.normbound(participating_clients,  hp["attack_rate"])
-        # elif hp["aggregation_mode"] == "trmean":
-        #     server.TrimmedMean(participating_clients, hp["attack_rate"])
-        # elif hp["aggregation_mode"] == "krum":
-        #     log_krum_selection("single_Krum", multi_k=False)
-        # elif hp["aggregation_mode"] == "multi-krum":
-        #     log_krum_selection("Multi_Krum", multi_k=True)
-        # elif hp["aggregation_mode"] == "RLR":
-        #     server.RLR(participating_clients, hp["robustLR_threshold"])
-        # elif hp["aggregation_mode"] == "flame":
-        #     mali_select_p=server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"],
-        #                  hp["right_ben"], hp["noise"], hp["turn"])
-        #     xp.log({"flame_mali_select_precentage": mali_select_p})
-        # elif hp["aggregation_mode"] == "foolsgold":
-        #     server.foolsgold(participating_clients)
-        # elif hp["aggregation_mode"] == "rfa":
-        #     server.rfa(participating_clients)
-        # elif hp["aggregation_mode"] == "fltrust":
-        #     server.fltrust(participating_clients, root_loader=fltrust_root_dl, epochs=hp['local_epochs'])
-        # else:
-        #     import pdb
-        #     pdb.set_trace()
+        """        
+        # server aggregation
+        if hp["aggregation_mode"] == "FedAVG":
+            server.fedavg(participating_clients)
+        elif hp["aggregation_mode"] == "ABAVG":
+            server.abavg(participating_clients)
+        elif hp["aggregation_mode"] == "median":
+            server.median(participating_clients)
+        elif hp["aggregation_mode"] == "NormBound":
+            server.normbound(participating_clients,  hp["attack_rate"])
+        elif hp["aggregation_mode"] == "trmean":
+            server.TrimmedMean(participating_clients, hp["attack_rate"])
+        elif hp["aggregation_mode"] == "krum":
+            log_krum_selection("single_Krum", multi_k=False)
+        elif hp["aggregation_mode"] == "multi-krum":
+            log_krum_selection("Multi_Krum", multi_k=True)
+        elif hp["aggregation_mode"] == "RLR":
+            server.RLR(participating_clients, hp["robustLR_threshold"])
+        elif hp["aggregation_mode"] == "flame":
+            mali_select_p=server.flame(participating_clients, hp["attack_rate"], hp["wrong_mal"],
+                         hp["right_ben"], hp["noise"], hp["turn"])
+            xp.log({"flame_mali_select_precentage": mali_select_p})
+        elif hp["aggregation_mode"] == "foolsgold":
+            server.foolsgold(participating_clients)
+        elif hp["aggregation_mode"] == "rfa":
+            server.rfa(participating_clients)
+        elif hp["aggregation_mode"] == "fltrust":
+            server.fltrust(participating_clients, root_loader=fltrust_root_dl, epochs=hp['local_epochs'])
+        else:
+            import pdb
+            pdb.set_trace()
+        """
         
         server_lr = hp.get("server_lr", 1)
         mali_select_p = server.server_aggregation(aggregation_mode=hp["aggregation_mode"],
@@ -356,7 +358,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
             test_accs.append(stats['test_accuracy'])
 
             # Save results to Disk
-            saved_path = xp.save_to_disc(path=args.SUBRESULTS_PATH, name=str(exp_id))
+            saved_path = xp.save_to_disc(path=args.SUBRESULTS_PATH, id=exp_id)
             e = int((time.time()-t1)/c_round *
                     (hp['communication_rounds']-c_round))
             print("Remaining Time (approx.):", '{:02d}:{:02d}:{:02d}'.format(e // 3600, (e % 3600 // 60), e % 60),
@@ -367,6 +369,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     # Save model to disk
     server.save_model(path=args.SUBRESULTS_PATH, name=str(exp_id) + ".pt", if_save=hp["save_model"])
 
+    return test_accs
     
     
     # Delete objects to free up GPU memory
@@ -383,10 +386,25 @@ def run():
         x)][args.start:args.end]
     experiments = [xpm.Experiment(hyperparameters=hp) for hp in hp_dicts]
 
+    filename = "master.json"
+    # Save to file
+    with open(os.path.join(args.SUBRESULTS_PATH, filename), "w") as f:
+        json.dump(experiments_raw, f, indent=4)  
+
     print("Running {} Experiments..\n".format(len(experiments)))
     for xp_count, xp in enumerate(experiments):
-        run_experiment(xp, xp_count, len(experiments), exp_id = xp.hyperparameters["log_id"])
+        test_accs = run_experiment(xp, xp_count, len(experiments), exp_id = xp.hyperparameters["log_id"])
 
-
+        # ["exp_num", "id", "dataset", "noniid_alpha", "attack_method",  "malicious_rate", "agr", "acc"]
+        hp = xp.hyperparameters
+        master_csv.append_save_csv([xp_count,
+                                    hp["log_id"],
+                                    hp["dataset"],
+                                    hp["alpha"],
+                                    hp["attack_method"],
+                                    hp["attack_rate"], 
+                                    hp["aggregation_mode"],
+                                    test_accs[-1]
+                                    ])
 if __name__ == "__main__":
     run()

@@ -25,9 +25,9 @@ class Device(object):
 
     def save_model(self, path=None, name=None, verbose=True, if_save=False):
         if if_save:
-            torch.save(self.model.state_dict(), str(path)+"/"+str(name))
+            torch.save(self.model.state_dict(), os.path.join(path, name) )
             if verbose:
-                print("Saved model to", str(path)+str(name))
+                print("Saved model to", os.path.join(path, name))
 
     def load_model(self, path=None, name=None, verbose=True):
         if name:

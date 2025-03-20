@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 def save_results(results_dict, path, name, verbose=True):
     # print("results_dict", results_dict)
     results_numpy = {key : np.array(value) for key, value in results_dict.items()}
-    print("save_results path", path)
+    # print("save_results path", path)
     if not os.path.exists(path):
         os.makedirs(path)
-    np.savez(path+name, **results_numpy) 
+    np.savez(os.path.join(path, name), **results_numpy) 
     if verbose:
-        print("Saved results to ", path+name+".npz")
+        print("Saved results to ", os.path.join(path, name)+".npz")
 
 
 def load_results(path, filename, verbose=True):
@@ -104,10 +104,11 @@ class Experiment():
             self.hyperparameters_ = {}
 
                 
-    def save_to_disc(self, path, name):
+    def save_to_disc(self, path, id):
         if path:
-            saved_path = os.path.join(path, name)
-            saved_name =  'xp_'+ \
+            saved_path = path
+            saved_name =    str(id) + '_' + \
+                            str(self.hyperparameters["dataset"]) + '_' + \
                             str(self.hyperparameters["attack_method"])+ '_' + \
                             str(self.hyperparameters["aggregation_mode"]) + '_' + \
                             str(self.hyperparameters["alpha"])
