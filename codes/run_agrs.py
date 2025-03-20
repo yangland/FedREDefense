@@ -60,7 +60,7 @@ args.SUBRESULTS_PATH = os.path.join(args.RESULTS_PATH, curr_time)
 if not os.path.exists(args.SUBRESULTS_PATH):
     os.makedirs(args.SUBRESULTS_PATH)
 
-master_csv_header = ["exp_num", "exp_id", "dataset", "noniid_alpha", "attack_method",  "attack_rate", "agr", "acc"]
+master_csv_header = ["exp_num", "exp_id", "dataset", "alpha", "attack_method",  "attack_rate", "agr", "acc"]
 master_csv = CsvLogging(f"master", args.SUBRESULTS_PATH, master_csv_header)
 
 def detection_metric_per_round(real_label, label_pred):
@@ -316,13 +316,14 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         """
         
         server_lr = hp.get("server_lr", 1)
-        mali_select_p = server.server_aggregation(aggregation_mode=hp["aggregation_mode"],
+        mali_select_p, selected_clients_ids = server.server_aggregation(aggregation_mode=hp["aggregation_mode"],
                                   clients=participating_clients,
                                   server_lr = server_lr,
                                   mali_ratio=hp["attack_rate"],
                                   mali_ids_all=mali_ids_all)
         
-        xp.log({f"{hp['aggregation_mode']}_select_percentage": mali_select_p})
+        xp.log({f"select_percentage": mali_select_p})
+        xp.log({f"select_ids": selected_clients_ids})
             
         if xp.is_log_round(c_round):
             xp.log({'communication_round': c_round,
@@ -369,13 +370,12 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     # Save model to disk
     server.save_model(path=args.SUBRESULTS_PATH, name=str(exp_id) + ".pt", if_save=hp["save_model"])
 
-    return test_accs
-    
-    
     # Delete objects to free up GPU memory
     del server
     clients.clear()
     torch.cuda.empty_cache()
+    
+    return test_accs
 
 
 
@@ -395,7 +395,6 @@ def run():
     for xp_count, xp in enumerate(experiments):
         test_accs = run_experiment(xp, xp_count, len(experiments), exp_id = xp.hyperparameters["log_id"])
 
-        # ["exp_num", "id", "dataset", "noniid_alpha", "attack_method",  "malicious_rate", "agr", "acc"]
         hp = xp.hyperparameters
         master_csv.append_save_csv([xp_count,
                                     hp["log_id"],
@@ -406,5 +405,7 @@ def run():
                                     hp["aggregation_mode"],
                                     test_accs[-1]
                                     ])
+
+
 if __name__ == "__main__":
     run()

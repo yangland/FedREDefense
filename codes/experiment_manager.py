@@ -111,7 +111,7 @@ class Experiment():
                             str(self.hyperparameters["dataset"]) + '_' + \
                             str(self.hyperparameters["attack_method"])+ '_' + \
                             str(self.hyperparameters["aggregation_mode"]) + '_' + \
-                            str(self.hyperparameters["alpha"])
+                            str(self.hyperparameters["alpha"]) + ".npz"
             save_results(self.to_dict(), 
                             path = saved_path,
                             name = saved_name 

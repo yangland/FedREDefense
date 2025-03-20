@@ -180,13 +180,14 @@ class Server(Device):
         malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids_all)
         mali_select_p = (malicious_count / len(clients))
         
-        return mali_select_p
+        return mali_select_p, selected_clients_ids
         
     def server_aggregation(self, aggregation_mode, clients, server_lr, mali_ratio, mali_ids_all):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         
         mali_select_p = []
+        selected_clients_ids = []
         for model_name in unique_client_model_names:
             # Wt = deepcopy(self.sd_dict[model_name])
             # Wt1 = deepcopy(self.sd_dict[model_name])
@@ -205,21 +206,21 @@ class Server(Device):
                                  clients=clients, 
                                  mali_ratio=mali_ratio)
             elif aggregation_mode == "krum":
-                mali_select_p = self.apply_krum_aggregation(clients, 
+                mali_select_p, selected_clients_ids = self.apply_krum_aggregation(clients, 
                                             mali_ratio, 
                                             multi_k=False, 
                                             unique_client_model_names=unique_client_model_names, 
                                             mali_ids_all = mali_ids_all,
                                             sd1=sd1)
             elif aggregation_mode == "multi-krum":
-                mali_select_p = self.apply_krum_aggregation(clients, 
+                mali_select_p, selected_clients_ids = self.apply_krum_aggregation(clients, 
                                             mali_ratio, 
                                             multi_k=True, 
                                             unique_client_model_names=unique_client_model_names, 
                                             mali_ids_all = mali_ids_all,
                                             sd1=sd1)
             elif aggregation_mode == "flame":
-                mali_select_p = reduce_flame(target=sd1, 
+                mali_select_p, selected_clients_ids = reduce_flame(target=sd1, 
                                            sources=[client.sd for client in clients if client.model_name == model_name],
                                             malicious_rate=mali_ratio,
                                             wrong_mal=0,
@@ -236,7 +237,7 @@ class Server(Device):
             #     param.data = sd_final[name].data
             self.model_dict[model_name].load_state_dict(sd_final)
             
-            return mali_select_p
+            return mali_select_p, selected_clients_ids
 
     def fedavg(self, clients):
         unique_client_model_names = np.unique(

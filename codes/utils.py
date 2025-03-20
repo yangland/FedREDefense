@@ -1597,7 +1597,7 @@ def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, t
             temp = temp.normal_(mean=0,std=noise*clip_value)
             var += temp
     
-    return wrong_mal/(wrong_mal+right_ben)
+    return wrong_mal/(wrong_mal+right_ben), list(benign_client)
 
 def reduce_foolsgold(target, sources):
     n_clients = len(sources)
