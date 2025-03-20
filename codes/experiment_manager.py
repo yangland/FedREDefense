@@ -14,7 +14,7 @@ def save_results(results_dict, path, name, verbose=True):
         os.makedirs(path)
     np.savez(os.path.join(path, name), **results_numpy) 
     if verbose:
-        print("Saved results to ", os.path.join(path, name)+".npz")
+        print("Saved results to ", os.path.join(path, name))
 
 
 def load_results(path, filename, verbose=True):

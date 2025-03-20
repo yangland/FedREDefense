@@ -240,8 +240,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         logger.info(f"---iter{c_round}/{hp['communication_rounds']}----")
         participating_clients = server.select_clients(
             clients, hp["participation_rate"])
-        xp.log({"participating_clients": np.array(
-            [c.id for c in participating_clients])})
+        xp.log({"participating_clients": np.sort(np.array(
+            [c.id for c in participating_clients]))})
         # For attack methods that require benign update from clients to construct the malicious upates
         if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP", "untargeted_cos"] \
             and hp["attack_method"]!="NO" \

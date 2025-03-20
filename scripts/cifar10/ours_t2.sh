@@ -6,13 +6,13 @@ export CUDA_VISIBLE_DEVICES='0'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
-    "models" : [{"resnet8_noskip": 10}], 
+    "models" : [{"ConvNet32": 10}], 
 
     "attack_rate" :  [ 0.4 ],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
-    "alpha" : [0.5],
+    "alpha" : [0.05],
     "communication_rounds" : [30],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
@@ -35,7 +35,7 @@ hyperparameters04='[{
     "uniformed_att": ["True"],
     "beta_": [0.5],
     "lambda_": [1],
-    "adv_lr": [0.01],
+    "adv_lr": [0.1],
     "percentile": [25],
     "server_lr": [1.0]
     }]'

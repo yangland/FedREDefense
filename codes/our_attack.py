@@ -67,7 +67,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
                                             epochs = K, 
                                             model0 = model0, 
                                             model1 = ben_mean_model, 
-                                            beta = beta_, 
+                                            beta_ = beta_, 
                                             budget = budget)
 
     # Evaluate attack progress
@@ -81,7 +81,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
             print(f"Inf detected in {param.shape}")
         
         # Clamp values after the check
-        param.data.clamp_(-1e6, 1e6)  # In-place operation
+        # param.data.clamp_(-1e6, 1e6)  # In-place operation
     
     
     # Compute and normalize malicious gradient update
@@ -91,7 +91,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     xp.log({"benign norm": float(benign_norm)})
     xp.log({"mali grad norm": float(mali_grad_norm)})
     
-    norm_mali_flat = flat_dict(mali_grad) / mali_grad_norm * benign_norm 
+    norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
     
     if torch.isnan(norm_mali_flat).any():
         print("crafted normalized_mali_flat has NA values!")
@@ -99,9 +99,9 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     # Scale with lambda and update model
     mali_sd = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
 
-    model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_sd.values()]).any().item()
-    if model_has_nan:
-        print("crafted model weight has NA values!")
+    # model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_sd.values()]).any().item()
+    # if model_has_nan:
+    #     print("crafted model weight has NA values!")
         
     sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
     
@@ -114,24 +114,51 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
 
 
 def stable_log_cosh_cross_entropy_loss(preds, targets):
+    """Computes a stable log-cosh version of cross-entropy loss."""
     ce_loss = F.cross_entropy(preds, targets, reduction='none')  # Standard CE loss
     stable_loss = torch.abs(ce_loss) + torch.log1p(torch.exp(-2 * torch.abs(ce_loss))) - torch.log(torch.tensor(2.0))
     return torch.mean(stable_loss)
 
-
-def safe_cross_entropy(logits, labels):
+def safe_cross_entropy(logits, labels): 
     """Compute cross-entropy safely, avoiding NaN issues."""
-    if torch.isnan(logits).any() or torch.isinf(logits).any():
-        print("NaN or Inf detected in logits! Clamping values...")
+    
+    # Check for NaNs or Infs in logits
+    if torch.isnan(logits).any() :
+        print("Warning: NaN detected in logits! Clamping values...")
         logits = torch.clamp(logits, min=-1e6, max=1e6)
 
-    logits = logits - logits.max(dim=1, keepdim=True)[0]  # Logits shifting for stability
-    labels = labels.long()  # Ensure correct label type
+    if torch.isinf(logits).any():
+        print("Inf detected in logits! Clamping values...")
+        logits = torch.clamp(logits, min=-1e6, max=1e6)
 
-    return torch.nn.CrossEntropyLoss()(logits, labels)
+    # Check for NaNs or invalid values in labels
+    if torch.isnan(labels).any() or torch.isinf(labels).any():
+        raise ValueError("Error: NaN or Inf detected in labels!")
+
+    # Ensure labels are long and within the expected range
+    labels = labels.long()
+    num_classes = logits.shape[1]
+    
+    if labels.min() < 0 or labels.max() >= num_classes:
+        raise ValueError(f"Error: Labels out of range! Expected between 0 and {num_classes-1}, but got {labels.min()} to {labels.max()}.")
+
+    # Stability shift
+    logits = logits - logits.max(dim=1, keepdim=True)[0]
+
+    # Compute the stable log-cosh cross-entropy loss
+    loss = stable_log_cosh_cross_entropy_loss(logits, labels)
+
+    # Check for NaNs in final loss
+    if not torch.isfinite(loss):
+        print("Warning: Non-finite loss detected! Returning fallback value.")
+        return torch.tensor(0.0, requires_grad=True)
+
+    return loss
 
 
-def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):    
+
+
+def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1, beta_, budget):    
     model.train()
     # model.parameters need to use, no state_dict, the trainable parameters
     flat_w0 = flat_dict(filter_trainable_state_dict(model0))
@@ -143,37 +170,46 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     
     # initial as the server model
     latest_w = flat_w0.clone().detach()
+    
+    # Initialize GradScaler only once
+    scaler = torch.amp.GradScaler()
+    
     for ep in range(epochs):
+        running_loss = 0  # Reset running loss each epoch
+        samples = 0  # Reset sample count each epoch
+
         for it, (x, y) in enumerate(loader):
             if it % 2 == 0:
                 losses.append(round(eval_epoch(model, loader), 2))
+
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            
-            # 1 negative CE loss
-            # loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
-            loss_ce = safe_cross_entropy(model(x), y)
-            loss_oppo_ce = - loss_ce
 
-            running_loss += loss_oppo_ce.item() * y.shape[0]
-            samples += y.shape[0]
-            
-            # add cos loss 
-            w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
-            target = torch.ones(len(w)).to(device)
-            # cos loss with the model1, as the mean of benign
-            loss_cos = nn.CosineEmbeddingLoss()(flat_w1.unsqueeze(0), w.unsqueeze(0), target)
-            
-            scaler = torch.amp.GradScaler()
             with torch.amp.autocast(device_type=device):
-                # loss_obj = (1-beta) * (- stable_log_cosh_cross_entropy_loss(model(x), y)) + beta * loss_cos
-                loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
-            
+                # Compute losses
+                loss_ce = safe_cross_entropy(model(x), y)
+                loss_oppo_ce = -loss_ce
+                running_loss += loss_oppo_ce.item() * y.shape[0]
+                samples += y.shape[0]
+
+                # Add cosine loss
+                w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
+                target = torch.ones(len(w)).to(device)
+                loss_cos = nn.CosineEmbeddingLoss()(flat_w1.unsqueeze(0), w.unsqueeze(0), target)
+
+                # Combine losses
+                loss_obj = (1 - beta_) * loss_oppo_ce + beta_ * loss_cos
+
+            # Scale loss and backpropagate
             scaler.scale(loss_obj).backward()
+
+            # Optional: Gradient clipping
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+
+            # Step optimizer and scheduler
             scaler.step(optimizer)
+            scaler.update()  # This is important for adjusting the scaling factor
             scheduler.step()
-            # loss_obj.backward()
-            # optimizer.step()
             
             if it % 5 == 0:
                 print(f"ep{ep}, loss_ce: {loss_oppo_ce:.2f}, loss_cos: {loss_cos:.6f}, loss_obj: {loss_obj:.2f}, lr: {optimizer.param_groups[0]['lr']}")
@@ -283,14 +319,6 @@ def train_rev_w_cos_grad(model, loader, optimizer, scheduler, epochs, model0, mo
         
         last_grad_mail = grad_mail
     
-    #TODO debugging
-    # grad_ben_flat = torch.cat([p.view(-1) for p in grad_ben]).to(device)
-    # grad_mail_flat = torch.cat([p.view(-1) for p in grad_mail]).to(device)
-    # # grad_mail_flat_norm = grad_mail_flat / torch.norm(grad_mail_flat, p=2) * torch.norm(grad_ben_flat, p=2)
-    
-    # craft_g, best_t, ca_cos_d = weighted_avg_budget_cos(a=grad_ben_flat, b=grad_mail_flat, budget=budget)
-    # print("best_t", best_t)
-    # print("ca_cos_d", ca_cos_d)
     
     # #TODO debugging
     craft_g = craft_tensor(B=grad_ben, M1=last_grad_mail, M2=grad_mail, k=budget)
