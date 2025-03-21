@@ -688,8 +688,8 @@ class ResNet(nn.Module):
         return x
 
 
-def resnet18(num_classes=10, dataset = 'cifar10'):
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes)
+# def resnet18(num_classes=10, dataset = 'cifar10'):
+#     return ResNet(BasicBlock, [2, 2, 2, 2], num_classes)
 
 
 
@@ -939,6 +939,28 @@ class Svhn_6L(nn.Module):
         x = self.fc2(x)
         return x
 
+
+class resnet18(nn.Module): 
+    def __init__(self, num_classes=10, pretrained_path=None, group_norm=False, dataset='cifar10'):
+        super(resnet18, self).__init__()
+        channel = channel_dict.get(dataset)
+        
+        # Encoder (removed variant='resnet18')
+        self.f = Model(channel=channel, group_norm=group_norm).f
+        
+        # Classifier
+        self.classification_layer = nn.Linear(512, num_classes, bias=True)
+
+        if pretrained_path:
+            self.load_state_dict(torch.load(pretrained_path, map_location='cpu'), strict=False)
+
+    def extract_features(self, x):
+        return torch.flatten(self.f(x), start_dim=1)
+
+    def forward(self, x):
+        feature = self.extract_features(x)
+        out = self.classification_layer(feature)
+        return out
 
 
 def get_model(model):

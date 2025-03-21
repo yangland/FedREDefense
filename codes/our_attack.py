@@ -12,6 +12,15 @@ from copy import deepcopy
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+def check_state_dict(state_dict):
+    for key, value in state_dict.items():
+        if torch.is_tensor(value):
+            if torch.isnan(value).any():
+                raise ValueError(f"NaN detected in {key}")
+            if torch.isinf(value).any():
+                raise ValueError(f"Inf detected in {key}")
+    print("State dictionary is valid.")
+
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
                                  model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
@@ -98,12 +107,13 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
         
     # Scale with lambda and update model
     mali_sd = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
-
-    # model_has_nan = torch.stack([torch.isnan(p).any() for p in mali_sd.values()]).any().item()
-    # if model_has_nan:
-    #     print("crafted model weight has NA values!")
-        
     sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
+    
+    # Try validate before loading
+    try:
+        check_state_dict(mali_sd)
+    except ValueError as e:
+        print(f"Warning mali_sd: {e}") 
     
     malicc.model.load_state_dict(mali_sd, strict=False)
     
