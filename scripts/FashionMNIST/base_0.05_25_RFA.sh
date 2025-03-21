@@ -7,8 +7,8 @@ hyperparameters04='[{
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 100}],
 
-    "attack_rate" :  [0.25],
-    "attack_method": [ "MPAF"],
+    "attack_rate" :  [0],
+    "attack_method": [ "NO"],
     "participation_rate" : [1],
 
     "alpha" : [0.1],

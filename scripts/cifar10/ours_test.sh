@@ -8,8 +8,8 @@ hyperparameters04='[{
     "dataset" : ["cifar10"],
     "models" : [{"resnet18": 20}], 
 
-    "attack_rate" :  [ 0.2],
-    "attack_method": ["untargeted_cos"],
+    "attack_rate" :  [ 0],
+    "attack_method": ["NO"],
     "participation_rate" : [1],
 
     "alpha" : [0.5],
@@ -18,7 +18,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : [ "flame"],
+    "aggregation_mode" : [ "krum"],
     "pretrained" : [null],
     "save_model" : [1],
     "log_frequency" : [1],
@@ -36,7 +36,7 @@ hyperparameters04='[{
     "beta_": [0.3],
     "lambda_": [1],
     "adv_lr": [0.001],
-    "percentile": [25],
+    "percentile": [50],
     "server_lr": [1.0],
     "ours_K": [10]
     }]'
