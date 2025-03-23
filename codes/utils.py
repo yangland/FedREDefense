@@ -4,7 +4,6 @@ from functools import partial
 import torch, torchvision
 import numpy as np
 import torch.nn as nn
-import data, models
 import experiment_manager as xpm
 # from fl_devices import Client, Server, Client_flip, Client_target, Client_LIE
 from collections import OrderedDict
@@ -22,6 +21,7 @@ from copy import deepcopy
 from torch import linalg as LA
 from torch.utils.data import DataLoader
 import random
+import heapq
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
@@ -1412,12 +1412,20 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     u_score, select_ui = torch.topk(sm_user_scores, k=user_num - krum_mal_num - 2, largest=False)
     select_ui = select_ui.cpu().numpy()
     
+    # if not multi_k:
+    #     select_ui = select_ui[0]
+    #     for name in target:
+    #         target[name].data = sources[select_ui][name].detach().clone()
+    #     select_ui = [select_ui]
+    # else: 
+    #     # multi k's FedAvg
+    #     selected_sources = [sources[i] for i in select_ui]
+    #     reduce_average(target=target, sources=selected_sources)
+    
     if not multi_k:
         select_ui = select_ui[0]
-        for name in target:
-            target[name].data = sources[select_ui][name].detach().clone()
-        select_ui = [select_ui]
-    # multi k's FedAvg
+        
+    # need another FedAvg step to do the aggregation
     return select_ui
 
 
@@ -2355,3 +2363,13 @@ def state_dict_to_w(sd, w):
     new_w = {k: v for k, v in sd.items() if k in w}
     
     return new_w
+
+
+def top_k_indices(lst, k):
+    return [index for index, _ in heapq.nlargest(k, enumerate(lst), key=lambda x: x[1])]
+
+
+def filter_state_dict(model_sd, v_layers_indices):
+    state_dict = model_sd
+    selected_layers = {k: v for i, (k, v) in enumerate(state_dict.items()) if i in v_layers_indices}
+    return selected_layers
