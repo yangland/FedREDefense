@@ -266,10 +266,10 @@ class Server(Device):
                                                         multi_k=True)   
                     
                         
-                    if list(set(selected_clients_ids1) & set(selected_clients_ids2)) != []:
-                        join_selected_clients_ids = list(set(selected_clients_ids1) & set(selected_clients_ids2))
-                    else:
-                        join_selected_clients_ids = list(set(selected_clients_ids1) | set(selected_clients_ids2))
+                if list(set(selected_clients_ids1) & set(selected_clients_ids2)) != []:
+                    join_selected_clients_ids = list(set(selected_clients_ids1) & set(selected_clients_ids2))
+                else:
+                    join_selected_clients_ids = list(set(selected_clients_ids1) | set(selected_clients_ids2))
                     
                 
                 print("selected_clients_ids1", selected_clients_ids1)
@@ -277,11 +277,7 @@ class Server(Device):
                 print("join_selected_clients_ids", join_selected_clients_ids)
                 selected_clients_ids = join_selected_clients_ids
                 
-                intersection = set(selected_clients_ids) & set(mali_ids_all)
 
-                # Calculate the percentage
-                mali_select_p = (len(intersection) / len(selected_clients_ids))
-                
                 # averaging the join selectioned clients 
                 reduce_average(target=sd1, sources=[
                         client.sd for client in clients if client.model_name == model_name and 
@@ -290,6 +286,9 @@ class Server(Device):
             sd_final = get_model_merged(sd0, get_model_update(sd1, sd0, multi = server_lr))
             self.model_dict[model_name].load_state_dict(sd_final)
             
+            # Calculate the percentage
+            intersection = set(selected_clients_ids) & set(mali_ids_all)
+            mali_select_p = (len(intersection) / len(selected_clients_ids))
             return mali_select_p, selected_clients_ids
 
     def fedavg(self, clients):

@@ -148,6 +148,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         two_steps = two_steps.lower() == "true"
     
     v_layers_indices = []
+    layer_num = -1
     
     if hp["aggregation_mode"] == "fltrust":
         fltrust_root_dl = get_fltrust_rootds(train_data, sample_siz=100)
