@@ -1344,7 +1344,9 @@ def reduce_normbound(target, server_sd, clients, mali_ratio):
     
     clipped_w = restore_dict_grad_flat(clipped_update, server_sd, client.model.state_dict())
     
-    target.load_state_dict(clipped_w)
+    for name in target:
+        target[name].data = clipped_w[name].data.clone()
+
 
 
 def reduce_trimmed_mean(target, sources, mali_ratio):
