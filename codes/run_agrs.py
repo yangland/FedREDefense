@@ -152,7 +152,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     
     if hp["aggregation_mode"] == "fltrust":
         fltrust_root_dl = get_fltrust_rootds(train_data, sample_siz=100)
-    elif two_steps or hp["aggregation_mode"] == "2steps_flame":
+    elif two_steps or hp["aggregation_mode"] in ["2steps_flame", "2steps_rfa"]:
         # in 2steps defence, run pre-assessment to get the sensitivity scores
         sensitivity_scores, layer_names, layer_num = server.pre_assessment(model_name = np.unique(model_names)[0],
                                                     num_classes=num_classes, 

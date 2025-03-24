@@ -241,7 +241,13 @@ class Server(Device):
                                                 right_ben=0,
                                                 noise=0.001,
                                                 turn=0,
-                                                v_layers_indices = v_layers_indices)                    
+                                                v_layers_indices = v_layers_indices)  
+                    
+                elif aggregation_mode == "2steps_rfa":     
+                    twosteps_rfa(target=sd1,
+                                 sources=[client.sd for client in clients if client.model_name == model_name],
+                                 v_layers_indices = v_layers_indices, 
+                                 alpha = 0.7)             
             else:
                 sources1 = [filter_state_dict(client.sd, v_layers_indices) for client in clients if client.model_name == model_name]
                 non_v_layers_indices = [item for item in list(range(layer_num)) if item not in v_layers_indices]  
@@ -296,8 +302,9 @@ class Server(Device):
             self.model_dict[model_name].load_state_dict(sd_final)
             
             # Calculate the percentage
-            intersection = set(selected_clients_ids) & set(mali_ids_all)
-            mali_select_p = (len(intersection) / len(selected_clients_ids))
+            if selected_clients_ids !=[]:
+                intersection = set(selected_clients_ids) & set(mali_ids_all)
+                mali_select_p = (len(intersection) / len(selected_clients_ids))
             return mali_select_p, selected_clients_ids
 
     def fedavg(self, clients):

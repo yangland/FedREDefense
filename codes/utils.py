@@ -2359,13 +2359,7 @@ def reduce_rfa(target, sources):
     n_clients = len(sources)
     flat_ = {i: flat_dict(sources[i]) for i in range(n_clients)}
     geo_med, client_weights = geometric_median(flat_)
-    
-    # print("geo_med client_weights", client_weights)
-    # total_sum = sum(client_weights.values())
-    # normalized_dict = {i: tensor / total_sum for i, tensor in client_weights.items()}
-    # print("normalized_dict_weights", normalized_dict)
-    
-    
+
     # Compute sum of all tensors
     total_sum = sum(client_weights.values())  # Ensure tensors are summed properly
 
@@ -2376,11 +2370,53 @@ def reduce_rfa(target, sources):
     normalized_dict = {i: tensor / total_sum for i, tensor in client_weights.items()}
 
     # Stack tensors
-    stacked_tensors = torch.stack(list(normalized_dict.values())).to(device)
+    stacked_weights = torch.stack(list(normalized_dict.values())).to(device)
+    print('rfa stacked_tensors',    stacked_weights)
     
-    print('stacked_tensors',    stacked_tensors)
+    reduce_weighted(target, sources, stacked_weights)
     
-    return reduce_weighted(target, sources, stacked_tensors)
+    return stacked_weights
+
+
+def weighted_normalized_dict(client_weights1, client_weights2, a):
+    combined_weights = {
+        k: a * client_weights1[k] + (1 - a) * client_weights2[k]
+        for k in client_weights1
+    }
+    total_sum = sum(combined_weights.values())
+    return {k: v / total_sum for k, v in combined_weights.items()}
+
+
+def twosteps_rfa(target, sources, v_layers_indices, alpha):
+    # get the first half of the layer indices
+    n_clients = len(sources)
+    
+    first_half = v_layers_indices[:len(v_layers_indices) // 2]
+    rest_half = v_layers_indices[len(v_layers_indices) // 2:]
+
+    # first half
+    layer_set1 = [flat_dict(filter_state_dict(source, first_half)) for source in sources]
+    flat1 = {i: layer_set1[i] for i in range(n_clients)}
+    _, client_weights1 = geometric_median(flat1)
+    
+    # second half, as a whole 
+    layer_set2 = [flat_dict(filter_state_dict(source, rest_half)) for source in sources]
+    flat2 = {i: layer_set2[i] for i in range(n_clients)}
+    _, client_weights2 = geometric_median(flat2)
+        
+    print("client_weights1", list(client_weights1.values()))
+    print("client_weights2", list(client_weights2.values()))
+
+    normalized_dict = weighted_normalized_dict(client_weights1, client_weights2, alpha)
+
+    # Stack tensors
+    # Assuming normalized_dict is a dictionary where values are floats
+    stacked_weights = torch.stack([torch.tensor(v) for v in normalized_dict.values()]).to(device)
+    print('rfa stacked_tensors',    stacked_weights)
+    
+    reduce_weighted(target, sources, stacked_weights)    
+    
+    return stacked_weights
 
 
 from scipy.spatial.distance import cdist
