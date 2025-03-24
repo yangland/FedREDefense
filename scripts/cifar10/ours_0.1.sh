@@ -5,9 +5,9 @@ export CUDA_VISIBLE_DEVICES='3'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
-    "models" : [{"resnet18": 100}],
+    "models" : [{"resnet8": 20}],
 
-    "attack_rate" :  [0, 0.1, 0.25, 0.4],
+    "attack_rate" :  [0, 0.25],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 

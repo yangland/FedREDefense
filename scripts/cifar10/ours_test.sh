@@ -6,7 +6,7 @@ export CUDA_VISIBLE_DEVICES='2'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
-    "models" : [{"resnet18": 20}], 
+    "models" : [{"resnet8": 100}], 
 
     "attack_rate" :  [ 0],
     "attack_method": ["NO"],
@@ -18,7 +18,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : [ "krum"],
+    "aggregation_mode" : ["FedAVG"],
     "pretrained" : [null],
     "save_model" : [1],
     "log_frequency" : [1],
@@ -36,7 +36,7 @@ hyperparameters04='[{
     "beta_": [0.3],
     "lambda_": [1],
     "adv_lr": [0.001],
-    "percentile": [50],
+    "percentile": [25],
     "server_lr": [1.0],
     "ours_K": [10]
     }]'
