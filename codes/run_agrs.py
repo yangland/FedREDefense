@@ -152,7 +152,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     
     if hp["aggregation_mode"] == "fltrust":
         fltrust_root_dl = get_fltrust_rootds(train_data, sample_siz=100)
-    elif two_steps:
+    elif two_steps or hp["aggregation_mode"] == "2steps_flame":
         # in 2steps defence, run pre-assessment to get the sensitivity scores
         sensitivity_scores, layer_names, layer_num = server.pre_assessment(model_name = np.unique(model_names)[0],
                                                     num_classes=num_classes, 
@@ -161,10 +161,11 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                                     args=args,
                                                     initial_model_state= initial_model_state)
         xp.log({"sensitivity_scores": sensitivity_scores})
-        v_layers_indices = top_k_indices(sensitivity_scores, k=math.floor(layer_num/2))
-        v_layers_indices.sort()
-        xp.log({"v_selected_layers": v_layers_indices})
-        logger.info(f"pre-assessment selected layers: {', '.join([layer_names[i] for i in v_layers_indices])}")
+        # v_layers_indices = top_k_indices(sensitivity_scores, k=math.floor(layer_num/3))
+        # v_layers_indices.sort()
+        v_layers_indices = sorted(range(len(sensitivity_scores)), key=lambda i: sensitivity_scores[i], reverse=True)
+        xp.log({"v_layers_indices": v_layers_indices})
+        logger.info(f"pre-assessment layers order: {', '.join([layer_names[i] for i in v_layers_indices])}")
         
         
     if hp["attack_rate"] == 0:

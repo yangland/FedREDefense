@@ -231,8 +231,17 @@ class Server(Device):
                                                 turn=0)
                 elif aggregation_mode == "rfa":
                     reduce_rfa(target=sd1,
-                                sources=[client.sd for client in clients if client.model_name == model_name])
+                                sources=[client.sd for client in clients if client.model_name == model_name])  
             
+                elif aggregation_mode == "2steps_flame":
+                    mali_select_p, selected_clients_ids = twosteps_flame(target=sd1, 
+                                            sources=[client.sd for client in clients if client.model_name == model_name],
+                                                malicious_rate=mali_ratio,
+                                                wrong_mal=0,
+                                                right_ben=0,
+                                                noise=0.001,
+                                                turn=0,
+                                                v_layers_indices = v_layers_indices)                    
             else:
                 sources1 = [filter_state_dict(client.sd, v_layers_indices) for client in clients if client.model_name == model_name]
                 non_v_layers_indices = [item for item in list(range(layer_num)) if item not in v_layers_indices]  
