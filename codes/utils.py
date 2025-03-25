@@ -979,13 +979,15 @@ def restore_flat_to_dict_w(param_flat, model_dict):
     return restored_w
 
 
-def eval_epoch(model, loader):
+def eval_epoch(model, loader, device="cuda"):
+    model.to(device)
     model.eval()
     running_loss, samples = 0.0, 0
+    loss_fn = nn.CrossEntropyLoss()  # Initialize the loss function outside the loop
     with torch.no_grad():
         for x, y in loader:
             x, y = x.to(device), y.to(device)
-            loss = nn.CrossEntropyLoss()(model(x), y)
+            loss = loss_fn(model(x), y)
             running_loss += loss.item() * y.shape[0]
             samples += y.shape[0]
         running_loss = running_loss / samples

@@ -22,7 +22,7 @@ def check_state_dict(state_dict):
     print("State dictionary is valid.")
 
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile):
+                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile, if_PGD=True):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
     adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
     
@@ -69,16 +69,26 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     acc_benign_mean = malicc.feedback_on_attack(class_num=10).items()
     
     # Update malicious weights
-    loss_dict, crafted_w_cos = train_rev_w_cos(model = malicc.model, 
-                                            loader = malicc.sub_loader, 
-                                            optimizer = malicc.optimizer, 
-                                            scheduler = malicc.scheduler, 
-                                            epochs = K, 
-                                            model0 = model0, 
-                                            model1 = ben_mean_model, 
-                                            beta_ = beta_, 
-                                            budget = budget)
-
+    if if_PGD:
+        loss_dict, crafted_w_cos = train_rev_w_cos(model = malicc.model, 
+                                                loader = malicc.sub_loader, 
+                                                optimizer = malicc.optimizer, 
+                                                scheduler = malicc.scheduler, 
+                                                epochs = K, 
+                                                model0 = model0, 
+                                                model1 = ben_mean_model, 
+                                                beta_ = beta_, 
+                                                budget = budget)
+    else:
+        loss_dict, crafted_w_cos = train_rev_w_cos_no_budget(model = malicc.model, 
+                                                loader = malicc.sub_loader, 
+                                                optimizer = malicc.optimizer, 
+                                                scheduler = malicc.scheduler, 
+                                                epochs = K, 
+                                                model0 = model0, 
+                                                model1 = ben_mean_model, 
+                                                beta_ = beta_, 
+                                                budget = budget)
     # Evaluate attack progress
     acc_results1 = malicc.feedback_on_attack(class_num=10).items()
     
@@ -243,6 +253,76 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
     return {"loss": running_loss / samples}, crafted_cos_d
 
 
+def train_rev_w_cos_no_budget(model, loader, optimizer, scheduler, epochs, model0, model1, beta_, budget):    
+    # for ablation study, no need to use budget and beta
+    budget = 2
+    
+    model.train()
+    # model.parameters need to use, no state_dict, the trainable parameters
+    flat_w0 = flat_dict(filter_trainable_state_dict(model0))
+    flat_w1 = flat_dict(filter_trainable_state_dict(model1))
+    
+    losses = []
+    running_loss, samples = 0.0, 0
+    print(f"data length {len(loader) * loader.batch_size}: batches {len(loader)}, batch_size {loader.batch_size}")
+    
+    # initial as the server model
+    latest_w = flat_w0.clone().detach()
+    
+    # Initialize GradScaler only once
+    scaler = torch.amp.GradScaler()
+    
+    for ep in range(epochs):
+        running_loss = 0  # Reset running loss each epoch
+        samples = 0  # Reset sample count each epoch
+
+        for it, (x, y) in enumerate(loader):
+            if it % 2 == 0:
+                losses.append(round(eval_epoch(model, loader), 2))
+
+            x, y = x.to(device), y.to(device)
+            optimizer.zero_grad()
+
+            with torch.amp.autocast(device_type=device):
+                # Compute losses
+                loss_ce = safe_cross_entropy(model(x), y)
+                loss_oppo_ce = -loss_ce
+                running_loss += loss_oppo_ce.item() * y.shape[0]
+                samples += y.shape[0]
+                w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
+                
+                loss_obj =  loss_oppo_ce 
+
+            # Scale loss and backpropagate
+            scaler.scale(loss_obj).backward()
+
+            # Step optimizer and scheduler
+            scaler.step(optimizer)
+            scaler.update()  # This is important for adjusting the scaling factor
+            scheduler.step()
+            
+            if it % 5 == 0:
+                print(f"ep{ep}, loss_ce: {loss_oppo_ce:.2f}, lr: {optimizer.param_groups[0]['lr']}")
+        
+        crafted_cos_d = 1 - F.cosine_similarity(flat_w1, w, dim=0, eps=1e-12)
+        print(f"cos_d: {crafted_cos_d}, budget: {budget}")
+
+        if crafted_cos_d > budget:
+            print(f"budget exceeded, finish training early, ep = {ep}")
+            break
+        
+        # latest_w = w
+        
+    # craft between last_mail_w and the current iteration w
+    # craft_w = craft_tensor(B=flat_w1, M1=latest_w, M2=w, k=budget)
+    # restored_crafted = restore_dict_w_flat(craft_w, model1)
+    # model.load_state_dict(restored_crafted)
+    
+    crafted_cos_d = 1 - F.cosine_similarity(flat_w1, w, dim=0, eps=1e-12)     
+
+    return {"loss": running_loss / samples}, crafted_cos_d
+
+
 def restore_dict_w_flat(param_flat, model):
     restored_w = {}
     start = 0
@@ -257,86 +337,3 @@ def restore_dict_w_flat(param_flat, model):
             restored_w[name] = param
     return restored_w
 
-
-def train_rev_w_cos_grad(model, loader, optimizer, scheduler, epochs, model0, model1, beta, budget):  
-    print("loader length", len(loader))
-    model.train()
-    # model.parameters need to use 
-    flat_model0 = flat_dict(filter_trainable_state_dict(model0))
-    flat_model1 = flat_dict(filter_trainable_state_dict(model1))
-    grad_ben = (flat_model1 - flat_model0).to(device)
-    
-    losses = []
-    running_loss, samples = 0.0, 0
-    print(f"data length {len(loader) * loader.batch_size}: batches {len(loader)}, batch_size {loader.batch_size}")
-    
-    last_grad_mail = grad_ben
-    for ep in range(epochs):
-        for it, (x, y) in enumerate(loader):
-            if it % 2 == 0:
-                losses.append(round(eval_epoch(model, loader), 2))
-            x, y = x.to(device), y.to(device)
-            optimizer.zero_grad()
-            
-            # 1 negative CE loss
-            loss_ce = nn.CrossEntropyLoss(reduction="mean")(model(x), y)
-            loss_oppo_ce = - loss_ce
-
-            
-            # 2 add sigmod on CE loss
-            # # Step 1: Apply sigmoid to logits
-            # logits = model(x)
-            
-            # probs = torch.sigmoid(logits)
-
-            # # Step 2: Normalize probabilities so they sum to 1 (mimic softmax)
-            # probs = probs / probs.sum(dim=1, keepdim=True)
-
-            # # Step 3: Compute cross-entropy loss manually
-            # loss_log = F.nll_loss(torch.log(probs), y)
-            
-            # loss_oppo_ce = - loss_log
-
-            # 
-            running_loss += loss_oppo_ce.item() * y.shape[0]
-            samples += y.shape[0]
-            
-            # add cos loss 
-            w = torch.cat([p.view(-1) for p in model.parameters()]).to(device)
-            grad_mail = w - flat_model0
-            target = torch.ones(len(w)).to(device)
-            loss_cos = nn.CosineEmbeddingLoss()(grad_ben.unsqueeze(0), grad_mail.unsqueeze(0), target)
-            
-            # combindation loss
-            loss_obj = (1-beta) * loss_oppo_ce + beta * loss_cos
-            # only negative loss
-            # loss_obj = loss_oppo_ce 
-            
-            loss_obj.backward()
-            optimizer.step()
-            scheduler.step()
-            if it % 10 == 0:
-                print(f"ep{ep}, loss_ce: {loss_oppo_ce:.0f}, loss_cos: {loss_cos:.4f}, loss_obj: {loss_obj:.0f}, lr: {optimizer.param_groups[0]['lr']}")
-        
-        # break
-        crafted_cos_d = cos_dist_w(grad_ben, grad_mail)
-        # print("eval losses", losses)
-        print(f"cos_d: {crafted_cos_d}, budget: {budget}")
-
-        if crafted_cos_d > budget:
-            print(f"budget exceeded, finish training early, ep = {ep}")
-            break
-        
-        last_grad_mail = grad_mail
-    
-    
-    # #TODO debugging
-    craft_g = craft_tensor(B=grad_ben, M1=last_grad_mail, M2=grad_mail, k=budget)
-    
-    restored_crafted = restore_dict_grad_flat(craft_g, model0.state_dict(), model.state_dict())
-    model.load_state_dict(restored_crafted)
-    crafted_cos_d = cos_dist_w(grad_ben, craft_g)
-        
-    print(f"crafted cos_d: {crafted_cos_d}")        
-
-    return {"loss": running_loss / samples}

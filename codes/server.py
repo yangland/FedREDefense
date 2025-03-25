@@ -319,11 +319,12 @@ class Server(Device):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         # print("fedavg unique_client_model_names", unique_client_model_names) # ['ConvNet']
-        self.weights = torch.Tensor([1. / len(clients)] * len(clients))
+        client_weights = torch.Tensor([1. / len(clients)] * len(clients))
         for model_name in unique_client_model_names:
             reduce_average(target=self.sd_dict[model_name], sources=[
                            client.sd for client in clients if client.model_name == model_name])
-
+        return client_weights
+    
     def median(self, clients):
         # import pdb; pdb.set_trace()
         unique_client_model_names = np.unique(
@@ -353,7 +354,8 @@ class Server(Device):
                 print("krum_candidate_indice", krum_candidate_indices)
         else:
             for model_name in unique_client_model_names:
-
+                # fix the multi_krum mali_ratio
+                mali_ratio = 0.5
                 krum_candidate_indices = reduce_krum(target=self.sd_dict[model_name], 
                                                      sources=[client.sd for client in clients if client.model_name == model_name], 
                                                      mali_ratio=mali_ratio,
