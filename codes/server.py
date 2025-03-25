@@ -174,8 +174,9 @@ class Server(Device):
 
     def apply_krum_aggregation(self, clients, mali_ratio, multi_k, unique_client_model_names, mali_ids_all, sd1):
         selected_clients_ids = self.krum(clients, mali_ratio, multi_k=multi_k)
-        krum_candidates = [clients[i] for i in list(set(selected_clients_ids))]
-        
+        # krum_candidates = [clients[i] for i in list(set(selected_clients_ids))]
+        krum_candidates = [clients[i] for i in list(set(np.atleast_1d(selected_clients_ids)))]
+
         reduce_average(target=sd1, sources=[client.sd for client in krum_candidates])
         
         malicious_count = sum(1 for client in selected_clients_ids if client in mali_ids_all)
