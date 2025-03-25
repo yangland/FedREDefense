@@ -138,7 +138,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                          n_data=None, num_workers=4, seed=hp["random_seed"])
 
     # initialize server and clients
-    server = Server(np.unique(model_names), test_loader,
+    server = Server(np.unique(model_names), optimizer_fn=optimizer_fn, loader=test_loader,
                     num_classes=num_classes, dataset=hp['dataset'])
 
     initial_model_state = server.models[0].state_dict().copy()
@@ -149,9 +149,9 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     
     v_layers_indices = []
     layer_num = -1
-    
+    fltrust_root_dl = []
     if hp["aggregation_mode"] == "fltrust":
-        fltrust_root_dl = get_fltrust_rootds(train_data, sample_siz=100)
+        fltrust_root_dl = get_fltrust_rootds(train_data, sample_size=100)
     elif two_steps or hp["aggregation_mode"] in ["2steps_flame", "2steps_rfa"]:
         # in 2steps defence, run pre-assessment to get the sensitivity scores
         sensitivity_scores, layer_names, layer_num = server.pre_assessment(model_name = np.unique(model_names)[0],
@@ -301,7 +301,6 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 xp.log({"state_dict_cos": sd_cos})
                 xp.log({"trainable_params_cos": w_cos})
                 
-                
         # Both benign and malicous clients compute weight update
         
         for client in participating_clients:
@@ -351,7 +350,9 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                   mali_ids_all=mali_ids_all,
                                   if_two_steps = two_steps,
                                   v_layers_indices=v_layers_indices,
-                                  layer_num = layer_num)
+                                  layer_num = layer_num,
+                                  fltrust_root_dl = fltrust_root_dl,
+                                  fltrust_epoches= hp['local_epochs'])
         
         xp.log({f"select_percentage": mali_select_p})
         xp.log({"select_ids": {c_round: selected_clients_ids}})
