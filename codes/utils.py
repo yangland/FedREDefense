@@ -1834,6 +1834,7 @@ def reduce_fltrust(target, sources, server_update):
     wv_normal = [x / sum(fltrust_weights) for x in fltrust_weights]
     
     reduce_weighted(target, sources, torch.tensor(wv_normal).to(device))
+    return wv_normal
 
 def get_fltrust_rootds(train_ds, sample_size):
     indices = random.sample(list(range(len(train_ds))), sample_size) 

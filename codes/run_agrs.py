@@ -149,7 +149,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     
     v_layers_indices = []
     layer_num = -1
-    
+    fltrust_root_dl = []
     if hp["aggregation_mode"] == "fltrust":
         fltrust_root_dl = get_fltrust_rootds(train_data, sample_size=100)
     elif two_steps or hp["aggregation_mode"] in ["2steps_flame", "2steps_rfa"]:
