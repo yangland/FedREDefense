@@ -303,7 +303,7 @@ class Server(Device):
             self.model_dict[model_name].load_state_dict(sd_final)
             
             # Calculate the percentage
-            if selected_clients_ids !=[]:
+            if list(selected_clients_ids) !=[]:
                 intersection = set(selected_clients_ids) & set(mali_ids_all)
                 mali_select_p = (len(intersection) / len(selected_clients_ids))
             return mali_select_p, selected_clients_ids
