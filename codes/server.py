@@ -110,7 +110,7 @@ def epoch(mode, dataloader, net, optimizer, criterion, aug=True, args=None):
 
 
 class Server(Device):
-    def __init__(self, model_names, loader, num_classes=10, dataset='cifar10', val_loader=None):
+    def __init__(self, model_names, optimizer_fn, loader, num_classes=10, dataset='cifar10', val_loader=None):
         super().__init__(loader)
         # import pdb; pdb.set_trace()
         print(f"dataset server {dataset}")
@@ -129,6 +129,9 @@ class Server(Device):
 
         self.models = list(self.model_dict.values())
         self.model = self.models[0]
+        self.optimizer_fn = optimizer_fn
+        self.optimizer = self.optimizer_fn(self.model.parameters())
+        
         self.fltrust_rootds = None
 
     def evaluate_ensemble(self, loader=None):
@@ -185,7 +188,8 @@ class Server(Device):
         return mali_select_p, selected_clients_ids
         
     def server_aggregation(self, aggregation_mode, clients, server_lr, mali_ratio, 
-                           mali_ids_all, if_two_steps, v_layers_indices, layer_num):
+                           mali_ids_all, if_two_steps, v_layers_indices, layer_num, fltrust_root_dl,
+                           fltrust_epoches):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         
@@ -233,6 +237,9 @@ class Server(Device):
                 elif aggregation_mode == "rfa":
                     reduce_rfa(target=sd1,
                                 sources=[client.sd for client in clients if client.model_name == model_name])  
+
+                elif aggregation_mode == "fltrust":
+                    self.fltrust(clients, root_loader=fltrust_root_dl, epochs=fltrust_epoches)
             
                 elif aggregation_mode == "2steps_flame":
                     mali_select_p, selected_clients_ids = twosteps_flame(target=sd1, 
@@ -435,7 +442,7 @@ class Server(Device):
 
 
     def fltrust(self, clients, root_loader, epochs):
-        sd_before = copy.deepcopy(self.model.state_dict())
+        sd_before = deepcopy(self.model.state_dict())
         server_train_stats = train_op(self.model, root_loader, self.optimizer, epochs)
         server_update = get_model_update(self.model.state_dict(), sd_before)
         
@@ -444,6 +451,9 @@ class Server(Device):
             reduce_fltrust(  target=self.sd_dict[model_name],
                              sources=[client.sd for client in clients if client.model_name == model_name],
                              server_update= server_update)
+        
+        # restore the server model
+        self.model.load_state_dict(sd_before)
 
     def rfa(self, clients):
         unique_client_model_names = np.unique(

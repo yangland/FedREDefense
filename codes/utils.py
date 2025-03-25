@@ -1389,6 +1389,8 @@ def flat_dict(grad_dict, layer_list=None):
     return user_flatten_grad
 
 def reduce_krum(target, sources, mali_ratio, multi_k=True):
+    # if mali_ratio == 0:
+    #     mali_ratio = 0.4
     krum_mal_num = math.ceil(mali_ratio * len(sources)) + 1
     user_num = len(sources)
     user_flatten_grad = flat_grad(target, sources)
@@ -1816,9 +1818,10 @@ def reduce_fltrust(target, sources, server_update):
     FLTrustTotalScore = 1e-9
     trust_score_list = []
     clip_value_list = []
+    client_num = len(sources)
     
-    for client_id in sources:
-        client_trust_score, client_clipped_value = cosScoreAndClipValue(server_update, sources[client_id])
+    for client_sd in sources:
+        client_trust_score, client_clipped_value = cosScoreAndClipValue(server_update, client_sd)
         FLTrustTotalScore += client_trust_score
         trust_score_list.append(client_trust_score)
         clip_value_list.append(client_clipped_value)
@@ -1826,7 +1829,7 @@ def reduce_fltrust(target, sources, server_update):
     trust_score_list = [x / FLTrustTotalScore  for x in trust_score_list]
     # weighted average of grad
     fltrust_weights_list = [a*b for a,b in zip(trust_score_list, clip_value_list)]
-    fltrust_weights = dict(zip(sources, fltrust_weights_list))
+    fltrust_weights = dict(zip(list(range(client_num)), fltrust_weights_list))
     
     wv_normal = [x / sum(fltrust_weights) for x in fltrust_weights]
     
