@@ -2,11 +2,11 @@ cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR", "2steps"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
 # "ConvNet"
-export CUDA_VISIBLE_DEVICES='2'
+export CUDA_VISIBLE_DEVICES='1'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
-    "models" : [{"resnet8": 100}], 
+    "models" : [{"resnet18": 10}], 
 
     "attack_rate" :  [ 0],
     "attack_method": ["NO"],
@@ -17,7 +17,7 @@ hyperparameters04='[{
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],
-    "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
+    "local_optimizer" : [ ["SGD", {"lr": 0.0001}]],
     "aggregation_mode" : ["FedAVG"],
     "pretrained" : [null],
     "save_model" : [1],
@@ -37,7 +37,7 @@ hyperparameters04='[{
     "lambda_": [1],
     "adv_lr": [0.001],
     "percentile": [25],
-    "server_lr": [1.0],
+    "server_lr": [1],
     "ours_K": [10]
     }]'
 
