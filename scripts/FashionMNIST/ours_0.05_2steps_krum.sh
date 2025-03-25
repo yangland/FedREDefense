@@ -1,24 +1,23 @@
 cmdargs=$1
-# aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR", "2steps"
+# aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
-# "ConvNet"
-export CUDA_VISIBLE_DEVICES='2'
+export CUDA_VISIBLE_DEVICES='1'
 hyperparameters04='[{
     "random_seed" : [4],
-    "dataset" : ["cifar10"],
-    "models" : [{"resnet8": 100}], 
+    "dataset" : ["fmnist"],
+    "models" : [{"ConvNet" : 100}], 
 
-    "attack_rate" :  [ 0],
-    "attack_method": ["NO"],
+    "attack_rate" :  [0.25, 0.4, 0.1],
+    "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
-    "alpha" : [0.5],
+    "alpha" : [0.05],
     "communication_rounds" : [500],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["FedAVG"],
+    "aggregation_mode" : [ "multi-krum"],
     "pretrained" : [null],
     "save_model" : [1],
     "log_frequency" : [1],
@@ -33,12 +32,12 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "beta_": [0.3],
     "lambda_": [1],
+    "beta_": [0.4],
     "adv_lr": [0.001],
     "percentile": [25],
     "server_lr": [1.0],
-    "ours_K": [10]
+    "two_steps": ["True"]
     }]'
 
 

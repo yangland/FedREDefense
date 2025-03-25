@@ -17,6 +17,7 @@ import shutil
 import datetime
 from csv_logging import CsvLogging
 from our_attack import *
+import data_f, models
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
@@ -125,14 +126,14 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     
     logger.info(f"dataset : {hp['dataset']}")
 
-    train_data_all, test_data = data.get_data(hp["dataset"], args.DATA_PATH)
+    train_data_all, test_data = data_f.get_data(hp["dataset"], args.DATA_PATH)
 
     # Creating data indices for training and validation splits:
     np.random.seed(hp["random_seed"])
     torch.manual_seed(hp["random_seed"])
     train_data = train_data_all
     client_loaders, test_loader, client_data_subsets = \
-        data.get_loaders(train_data, test_data, n_clients=len(model_names),
+        data_f.get_loaders(train_data, test_data, n_clients=len(model_names),
                          alpha=hp["alpha"], batch_size=hp["batch_size"], 
                          n_data=None, num_workers=4, seed=hp["random_seed"])
 
@@ -141,10 +142,32 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                     num_classes=num_classes, dataset=hp['dataset'])
 
     initial_model_state = server.models[0].state_dict().copy()
+    two_steps = hp.get("two_steps", False)
+    # Ensure it's converted to a proper boolean if it's a string
+    if isinstance(two_steps, str):
+        two_steps = two_steps.lower() == "true"
+    
+    v_layers_indices = []
+    layer_num = -1
     
     if hp["aggregation_mode"] == "fltrust":
         fltrust_root_dl = get_fltrust_rootds(train_data, sample_siz=100)
-    
+    elif two_steps or hp["aggregation_mode"] in ["2steps_flame", "2steps_rfa"]:
+        # in 2steps defence, run pre-assessment to get the sensitivity scores
+        sensitivity_scores, layer_names, layer_num = server.pre_assessment(model_name = np.unique(model_names)[0],
+                                                    num_classes=num_classes, 
+                                                    optimizer_fn= optimizer_fn,
+                                                    dataset=hp['dataset'], 
+                                                    args=args,
+                                                    initial_model_state= initial_model_state)
+        xp.log({"sensitivity_scores": sensitivity_scores})
+        # v_layers_indices = top_k_indices(sensitivity_scores, k=math.floor(layer_num/3))
+        # v_layers_indices.sort()
+        v_layers_indices = sorted(range(len(sensitivity_scores)), key=lambda i: sensitivity_scores[i], reverse=True)
+        xp.log({"v_layers_indices": v_layers_indices})
+        logger.info(f"pre-assessment layers order: {', '.join([layer_names[i] for i in v_layers_indices])}")
+        
+        
     if hp["attack_rate"] == 0:
         clients = [Client(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset=hp['dataset'])
                    for i, (loader, model_name) in enumerate(zip(client_loaders, model_names))]
@@ -325,7 +348,10 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                   clients=participating_clients,
                                   server_lr = server_lr,
                                   mali_ratio=hp["attack_rate"],
-                                  mali_ids_all=mali_ids_all)
+                                  mali_ids_all=mali_ids_all,
+                                  if_two_steps = two_steps,
+                                  v_layers_indices=v_layers_indices,
+                                  layer_num = layer_num)
         
         xp.log({f"select_percentage": mali_select_p})
         xp.log({"select_ids": {c_round: selected_clients_ids}})

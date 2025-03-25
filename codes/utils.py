@@ -4,7 +4,6 @@ from functools import partial
 import torch, torchvision
 import numpy as np
 import torch.nn as nn
-import data, models
 import experiment_manager as xpm
 # from fl_devices import Client, Server, Client_flip, Client_target, Client_LIE
 from collections import OrderedDict
@@ -22,6 +21,7 @@ from copy import deepcopy
 from torch import linalg as LA
 from torch.utils.data import DataLoader
 import random
+import heapq
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
@@ -1412,12 +1412,20 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     u_score, select_ui = torch.topk(sm_user_scores, k=user_num - krum_mal_num - 2, largest=False)
     select_ui = select_ui.cpu().numpy()
     
+    # if not multi_k:
+    #     select_ui = select_ui[0]
+    #     for name in target:
+    #         target[name].data = sources[select_ui][name].detach().clone()
+    #     select_ui = [select_ui]
+    # else: 
+    #     # multi k's FedAvg
+    #     selected_sources = [sources[i] for i in select_ui]
+    #     reduce_average(target=target, sources=selected_sources)
+    
     if not multi_k:
         select_ui = select_ui[0]
-        for name in target:
-            target[name].data = sources[select_ui][name].detach().clone()
-        select_ui = [select_ui]
-    # multi k's FedAvg
+        
+    # need another FedAvg step to do the aggregation
     return select_ui
 
 
@@ -1574,9 +1582,9 @@ def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, t
             #  minus per benign in cluster
             right_ben += 1
     turn+=1
-    logger.info(f"mali vs ben: {wrong_mal}, {right_ben}; mali% {(round(wrong_mal/(wrong_mal+right_ben)*100, 4))}")
-    logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn + 1e-9))}')
-    logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn + 1e-9))}')
+    # logger.info(f"mali vs ben: {wrong_mal}, {right_ben}; mali% {(round(wrong_mal/(wrong_mal+right_ben)*100, 4))}")
+    # logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn + 1e-9))}')
+    # logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn + 1e-9))}')
     
     clip_value = np.median(norm_list)
     for i in range(len(benign_client)):
@@ -1600,6 +1608,136 @@ def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, t
             var += temp
     
     return wrong_mal/(wrong_mal+right_ben), list(benign_client)
+
+
+def hdbscan_clustering(sources, cluster_size_p):
+    # sources as list of model state_dict() or layer paremeter
+    num_clients = len(sources)
+    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6).cuda()
+    cos_list=[]
+    local_model_vector = []
+
+    for param in sources:
+        local_model_vector.append(parameters_dict_to_vector_flt(param))
+    
+    for i in range(len(local_model_vector)):
+        cos_i = []
+        for j in range(len(local_model_vector)):
+            cos_ij = 1- cos(local_model_vector[i],local_model_vector[j])
+            # cos_i.append(round(cos_ij.item(),4))
+            cos_i.append(cos_ij.item())
+        cos_list.append(cos_i)
+    
+    clusterer = hdbscan.HDBSCAN(min_cluster_size=math.floor(num_clients * cluster_size_p),
+                                min_samples=1,
+                                allow_single_cluster=True).fit(cos_list)
+    logger.info(f"flame clusterer.labels_ {str(clusterer.labels_)}")
+    benign_clients = []
+
+    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6).cuda()
+    cos_list=[]
+    local_model_vector = []
+
+    for param in sources:
+        local_model_vector.append(parameters_dict_to_vector_flt(param))
+    for i in range(len(local_model_vector)):
+        cos_i = []
+        for j in range(len(local_model_vector)):
+            cos_ij = 1- cos(local_model_vector[i],local_model_vector[j])
+            # cos_i.append(round(cos_ij.item(),4))
+            cos_i.append(cos_ij.item())
+        cos_list.append(cos_i)
+    
+    max_num_in_cluster=0
+    max_cluster_index=0
+    if clusterer.labels_.max() < 0:
+        for i in range(len(sources)):
+            benign_clients.append(i)
+    else:
+        for index_cluster in range(clusterer.labels_.max()+1):
+            if len(clusterer.labels_[clusterer.labels_==index_cluster]) > max_num_in_cluster:
+                max_cluster_index = index_cluster
+                max_num_in_cluster = len(clusterer.labels_[clusterer.labels_==index_cluster])
+        for i in range(len(clusterer.labels_)):
+            if clusterer.labels_[i] == max_cluster_index:
+                benign_clients.append(i)
+    return benign_clients
+
+
+def twosteps_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, turn, v_layers_indices):
+    # get the first half of the layer indices
+    first_half = v_layers_indices[:len(v_layers_indices) // 2]
+    rest_half = v_layers_indices[len(v_layers_indices) // 2:]
+
+    # first half, high sensitive scores
+    benign_client_ids = []
+    for layer_ind in first_half:
+        print("layer_ind", layer_ind)
+        layer_set = [filter_state_dict(source, [layer_ind]) for source in sources]
+        benign_client_id = hdbscan_clustering(layer_set, cluster_size_p=0.75)
+        benign_client_ids.append(benign_client_id)
+    print("benign_client_ids", benign_client_ids)
+    
+    half1_benign_clients = list(set(benign_client_ids[0]).intersection(*benign_client_ids[1:])) if benign_client_ids else []
+    # second half, as a whole 
+    layer_set2 = [filter_state_dict(source, rest_half) for source in sources]
+    half2_benign_clients = hdbscan_clustering(layer_set2, cluster_size_p=0.5)
+        
+    if list(set(half1_benign_clients) & set(half2_benign_clients)) != []:
+        join_selected_clients_ids = list(set(half1_benign_clients) & set(half2_benign_clients))
+    else:
+        join_selected_clients_ids = list(set(half1_benign_clients) | set(half2_benign_clients))
+
+    logger.info(f"half1_benign_clients: {half1_benign_clients}")
+    logger.info(f"half2_benign_clients: {half2_benign_clients}")
+    logger.info(f"2steps flame selected benign_client \n {str(join_selected_clients_ids)}")    
+    
+    benign_client = join_selected_clients_ids
+    num_clients = len(sources)
+    num_malicious_clients = int(malicious_rate * num_clients)
+    num_benign_clients = num_clients - num_malicious_clients
+    update_params = []
+    norm_list = []
+    
+    for param in sources:
+        # get the local weight difference (gradient)
+        update_params.append(get_model_update(param, target))
+    
+    for i in range(num_clients):
+        norm_list = np.append(norm_list,torch.norm(parameters_dict_to_vector(update_params[i]),p=2).item())
+    
+    for i in range(len(benign_client)):
+        # if benign_client[i] < num_malicious_clients:
+        if benign_client[i] > num_benign_clients:
+            wrong_mal+=1
+        else:
+            #  minus per benign in cluster
+            right_ben += 1
+    turn+=1
+
+    # norm clip
+    clip_value = np.median(norm_list)
+    for i in range(len(benign_client)):
+        gama = clip_value/(norm_list[i] + 1e-15)
+        if gama < 1:
+            for key in update_params[benign_client[i]]:
+                if key.split('.')[-1] == 'num_batches_tracked':
+                    continue
+                update_params[benign_client[i]][key] *= gama
+    target = no_defence_balance([update_params[i] for i in benign_client], target)
+    
+    #add noise
+    with torch.no_grad():
+        for key, var in target.items():
+            if key.split('.')[-1] == 'num_batches_tracked':
+                        continue
+            temp = deepcopy(var)
+            temp = temp.normal_(mean=0,std=noise*clip_value)
+            var += temp
+    
+    return wrong_mal/(wrong_mal+right_ben), list(benign_client)
+
+
 
 def reduce_foolsgold(target, sources):
     n_clients = len(sources)
@@ -2221,13 +2359,7 @@ def reduce_rfa(target, sources):
     n_clients = len(sources)
     flat_ = {i: flat_dict(sources[i]) for i in range(n_clients)}
     geo_med, client_weights = geometric_median(flat_)
-    
-    # print("geo_med client_weights", client_weights)
-    # total_sum = sum(client_weights.values())
-    # normalized_dict = {i: tensor / total_sum for i, tensor in client_weights.items()}
-    # print("normalized_dict_weights", normalized_dict)
-    
-    
+
     # Compute sum of all tensors
     total_sum = sum(client_weights.values())  # Ensure tensors are summed properly
 
@@ -2238,11 +2370,53 @@ def reduce_rfa(target, sources):
     normalized_dict = {i: tensor / total_sum for i, tensor in client_weights.items()}
 
     # Stack tensors
-    stacked_tensors = torch.stack(list(normalized_dict.values())).to(device)
+    stacked_weights = torch.stack(list(normalized_dict.values())).to(device)
+    print('rfa stacked_tensors',    stacked_weights)
     
-    print('stacked_tensors',    stacked_tensors)
+    reduce_weighted(target, sources, stacked_weights)
     
-    return reduce_weighted(target, sources, stacked_tensors)
+    return stacked_weights
+
+
+def weighted_normalized_dict(client_weights1, client_weights2, a):
+    combined_weights = {
+        k: a * client_weights1[k] + (1 - a) * client_weights2[k]
+        for k in client_weights1
+    }
+    total_sum = sum(combined_weights.values())
+    return {k: v / total_sum for k, v in combined_weights.items()}
+
+
+def twosteps_rfa(target, sources, v_layers_indices, alpha):
+    # get the first half of the layer indices
+    n_clients = len(sources)
+    
+    first_half = v_layers_indices[:len(v_layers_indices) // 2]
+    rest_half = v_layers_indices[len(v_layers_indices) // 2:]
+
+    # first half
+    layer_set1 = [flat_dict(filter_state_dict(source, first_half)) for source in sources]
+    flat1 = {i: layer_set1[i] for i in range(n_clients)}
+    _, client_weights1 = geometric_median(flat1)
+    
+    # second half, as a whole 
+    layer_set2 = [flat_dict(filter_state_dict(source, rest_half)) for source in sources]
+    flat2 = {i: layer_set2[i] for i in range(n_clients)}
+    _, client_weights2 = geometric_median(flat2)
+        
+    print("client_weights1", list(client_weights1.values()))
+    print("client_weights2", list(client_weights2.values()))
+
+    normalized_dict = weighted_normalized_dict(client_weights1, client_weights2, alpha)
+
+    # Stack tensors
+    # Assuming normalized_dict is a dictionary where values are floats
+    stacked_weights = torch.stack([torch.tensor(v) for v in normalized_dict.values()]).to(device)
+    print('rfa stacked_tensors',    stacked_weights)
+    
+    reduce_weighted(target, sources, stacked_weights)    
+    
+    return stacked_weights
 
 
 from scipy.spatial.distance import cdist
@@ -2355,3 +2529,13 @@ def state_dict_to_w(sd, w):
     new_w = {k: v for k, v in sd.items() if k in w}
     
     return new_w
+
+
+def top_k_indices(lst, k):
+    return [index for index, _ in heapq.nlargest(k, enumerate(lst), key=lambda x: x[1])]
+
+
+def filter_state_dict(model_sd, v_layers_indices):
+    state_dict = model_sd
+    selected_layers = {k: v for i, (k, v) in enumerate(state_dict.items()) if i in v_layers_indices}
+    return selected_layers
