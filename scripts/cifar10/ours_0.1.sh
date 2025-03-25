@@ -1,22 +1,22 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "rfa"
 # attack_method: "AOP", "UAM"
-export CUDA_VISIBLE_DEVICES='3'
+export CUDA_VISIBLE_DEVICES='5'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["cifar10"],
-    "models" : [{"resnet8": 20}],
+    "models" : [{"resnet18": 20}],
 
-    "attack_rate" :  [0, 0.25],
+    "attack_rate" :  [0, 0.25, 0.4],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
     "alpha" : [0.1],
-    "communication_rounds" : [500],
+    "communication_rounds" : [200],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],
-    "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
+    "local_optimizer" : [ ["SGD", {"lr": 0.1}]],
     "aggregation_mode" : [ "flame", "multi-krum"],
     "pretrained" : [null],
     "save_model" : [1],
