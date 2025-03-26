@@ -256,8 +256,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         logger.info(f"---iter{c_round}/{hp['communication_rounds']}----")
         participating_clients = server.select_clients(
             clients, hp["participation_rate"])
-        xp.log({"participating_clients": np.sort(np.array(
-            [c.id for c in participating_clients]))})
+        xp.log({"participating_clients": np.array(
+            [c.id for c in participating_clients])})
         # For attack methods that require benign update from clients to construct the malicious upates
         if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP", "untargeted_cos"] \
             and hp["attack_method"]!="NO" \
@@ -289,10 +289,17 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                 lambda_ = hp["lambda_"], 
                                 adv_lr = hp["adv_lr"], 
                                 percentile = hp["percentile"],
-                                if_PGD=if_PGD)
+                                if_PGD=if_PGD,
+                                norm_discount= hp.get("norm_discount", 0.1))
                 
+                # sd_list = decompose_sd(mali_sd, num=len(mali_clients), budget=sd_cos*10)
+                # for i in range(len(mali_clients)):
+                #     mali_clients[i].mali_sd = sd_list[i]  
+                                  
                 for client in mali_clients:
                     client.mali_sd = mali_sd
+                
+
                 
                 xp.log({"vali_server": next(iter(acc_results0))[1]})
                 xp.log({"acc_benign_mean": next(iter(acc_benign_mean))[1]})

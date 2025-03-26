@@ -22,7 +22,8 @@ def check_state_dict(state_dict):
     print("State dictionary is valid.")
 
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile, if_PGD=True):
+                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile, if_PGD=True,
+                                 norm_discount = 0.1):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
     adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
     
@@ -68,7 +69,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     budget = max(1e-5, (1 - cos_precentile))
     
     # malicc model load benign mean weights
-    malicc.model.load_state_dict(benign_mean_sd)
+    malicc.model.load_state_dict(malicc.server_state)
     
     acc_benign_mean = malicc.feedback_on_attack(class_num=10).items()
     
@@ -114,8 +115,9 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
         xp.log({"benign norm": float(benign_norm)})
         xp.log({"mali grad norm": float(mali_grad_norm)})
         
-        norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
         
+        norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
+        norm_mali_flat *= norm_discount 
         if torch.isnan(norm_mali_flat).any():
             print("crafted normalized_mali_flat has NA values!")
             
