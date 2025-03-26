@@ -23,7 +23,7 @@ def check_state_dict(state_dict):
 
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
                                  model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile, if_PGD=True,
-                                 norm_discount = 0.1):
+                                 norm_discount=0.1):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
     adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
     
@@ -51,12 +51,13 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
     # measure cos using trainable parameters w, instead of sd
     benign_mean_w = filter_trainable_state_dict(ben_mean_model)
     
+    server_to_benign = cos_dist_w(flat_dict(benign_mean_sd), flat_dict(malicc.server_state)).detach().item()
     cos_mean, cos_med, cos_std, cos_precentile, cos_to_mean = cos_pairs_and_mean(all_w, benign_mean_w, percentile=percentile)
     xp.log({"cos_mean": cos_mean, 
             "cos_med": cos_med, 
             "cos_precentile": cos_precentile, 
             "cos_std": cos_std, 
-            "mean_cos_to_mean": cos_to_mean})
+            "server_to_benign": server_to_benign})
     
     # Prepare malicious client for attack
     if not if_PGD:
@@ -66,7 +67,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
 
     
     # Compute attack budget
-    budget = max(1e-5, (1 - cos_precentile))
+    budget = max(1e-8, cos_precentile)
     
     # malicc model load benign mean weights
     malicc.model.load_state_dict(malicc.server_state)
@@ -115,9 +116,10 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
         xp.log({"benign norm": float(benign_norm)})
         xp.log({"mali grad norm": float(mali_grad_norm)})
         
-        
+        xp.log({"norm_discount": float(norm_discount)})
         norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
-        norm_mali_flat *= norm_discount 
+        norm_mali_flat *= norm_discount
+        
         if torch.isnan(norm_mali_flat).any():
             print("crafted normalized_mali_flat has NA values!")
             

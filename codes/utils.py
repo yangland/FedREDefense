@@ -943,24 +943,6 @@ def restore_dict_w(param_dict, model_dict):
     return restored_w
 
 
-def restore_dict_w(param_dict, model_dict):
-    state_dict_keys = set(model_dict.keys())
-    param_dict_keys = set(param_dict.keys())
-
-    missing_keys = state_dict_keys - param_dict_keys
-    
-    restored_w = {}
-    start = 0
-    for name, param in model_dict.items():
-        if name not in missing_keys:
-            num_elements = param.numel()
-            restored_w[name] = param_dict[start:start + num_elements].view(param.shape)                          
-            start += num_elements
-        else:
-            restored_w[name] = model_dict[name]
-    return restored_w
-
-
 def restore_flat_to_dict_w(param_flat, model_dict):
     state_dict_keys = set(model_dict.keys())
     # param_dict_keys = set(param_flat.keys())
@@ -2148,6 +2130,8 @@ def pairwise_cosine_similarity(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor
 
 def cos_pairs_and_mean(grad_all, grad_mean, percentile):
     mean_flat = flat_dict(grad_mean)
+    # print("grad_all", grad_all)
+    # print("percentile", percentile)
     result_dict = cosine_similarity_analysis(grad_all, t=percentile)
     
     norm_all = torch.nn.functional.normalize(grad_all.to(device), dim=1)
@@ -2184,39 +2168,26 @@ def cosine_similarity_mal_ben(mal_all, ben_all, mal_mean, ben_mean):
     return cos_matrix, min_idx, result_dict['mean'], result_dict['med'], result_dict['std'], mali_ben_mean_cos, ben_cos_to_mean
 
 
-# def cosine_similarity_analysis(A):
-#     A = A.clone().detach().to(device)
-#     n = A.shape[0]
-#     cos_sims = []
-    
-#     for i in range(n):
-#         # print("i", i)
-#         for j in range(i + 1, n):
-#             cos_sim = torch.nn.functional.cosine_similarity(A[i], A[j], dim=0)
-#             cos_sims.append(cos_sim.item())
-    
-#     cos_sims = torch.tensor(cos_sims)
-#     # print("cos_sims", cos_sims)
-#     return cos_sims.mean().item(), torch.median(cos_sims).item(), torch.std(cos_sims, dim=0).item()
 
 def cosine_similarity_analysis(A, t):
     A = A.clone().detach().to(device)
     n = A.shape[0]
-    cos_sims = []
-    
+    cos_dists = []
+    # print("A", A)
     for i in range(n):
         for j in range(i + 1, n):
-            cos_sim = torch.nn.functional.cosine_similarity(A[i], A[j], dim=0)
-            cos_sims.append(cos_sim.item())
+            cos_dist = 1 - torch.nn.functional.cosine_similarity(A[i], A[j], dim=0)
+            cos_dists.append(cos_dist.item())
     
-    cos_sims = torch.tensor(cos_sims)
+    cos_dists = torch.tensor(cos_dists)
+    # print("cos_sims", cos_sims)
     
-    percentile_t = torch.quantile(cos_sims, t / 100.0).item()
+    percentile_t = torch.quantile(cos_dists, t / 100.0).item()
     
     return {
-        "mean": cos_sims.mean().item(),
-        "med": torch.median(cos_sims).item(),
-        "std": torch.std(cos_sims, dim=0).item(),
+        "mean": cos_dists.mean().item(),
+        "med": torch.median(cos_dists).item(),
+        "std": torch.std(cos_dists, dim=0).item(),
         "percentile": percentile_t
     }
 
@@ -2580,3 +2551,93 @@ def update_model_with_malicious_gradient(model, sd, server_state, mal_update):
 
     # Load the updated state_dict into the model
     model.load_state_dict(new_state_dict, strict=False)
+
+
+def decompose_sd(mali_sd, num, budget):
+    sd_list = []
+    mali_flat = flat_dict(mali_sd)
+    components_tensors = decompose_tensor(mali_flat, k=num, U=budget, eps=1e-8)
+    
+    for tensor in components_tensors:
+        new_sd = deepcopy(mali_sd)
+        new_sd = restore_flat_to_dict_w(tensor, new_sd)
+        sd_list.append(new_sd)
+    return sd_list
+
+def decompose_tensor(a, k, U, eps=1e-8):
+    """
+    Decompose tensor a into k tensors with pairwise cosine distance U,
+    such that they sum back to a.
+    
+    Args:
+        a: Input tensor (any shape, will be flattened for processing)
+        k: Number of components to decompose into
+        U: Target cosine distance between all pairs (0 <= U < 1)
+        eps: Small value for numerical stability
+    
+    Returns:
+        List of k tensors with same shape as a
+    """
+    # Check inputs
+    if U < 0 or U >= 1:
+        raise ValueError("U must be in [0, 1)")
+    if k < 1:
+        raise ValueError("k must be >= 1")
+    
+    original_shape = a.shape
+    a_flat = a.flatten()
+    d = a_flat.numel()  # Dimension of flattened tensor
+    
+    # Special case: k=1
+    if k == 1:
+        return [a.clone()]
+    
+    # Special case: U=0 means all components are equal to a/k
+    if U == 0:
+        return [a / k for _ in range(k)]
+    
+    # Create k vectors in d-dimensional space with:
+    # 1. All vectors have same norm
+    # 2. All pairwise cosine similarities = 1-U
+    # 3. Sum of vectors = a
+    
+    # First create a k × k matrix meeting the cosine similarity criteria
+    # Then extend it to d dimensions (d >= k)
+    
+    # Create a basis where one vector is along the sum direction
+    # and the remaining vectors are orthogonal to it and each other
+    
+    # Compute mean vector (a/k)
+    mean_vec = a_flat / k
+    
+    # Compute required norm for the orthogonal components
+    mean_norm_sq = mean_vec.pow(2).sum().clamp_min(eps)
+    c = torch.sqrt(mean_norm_sq * U / (1 - U))
+    
+    # Create orthogonal components
+    if k > 1:
+        # Create a (k-1) × d random matrix
+        ortho_components = torch.randn(k-1, d, device=a.device)
+        
+        # Orthogonalize with respect to mean_vec
+        for i in range(k-1):
+            for j in range(i):
+                ortho_components[i] -= (ortho_components[i] @ ortho_components[j]) * ortho_components[j]
+            ortho_components[i] = F.normalize(ortho_components[i], dim=0)
+            
+            # Ensure orthogonality to mean_vec
+            ortho_components[i] -= (ortho_components[i] @ mean_vec) * mean_vec / mean_norm_sq
+            ortho_components[i] = F.normalize(ortho_components[i], dim=0)
+    
+    # Construct the components
+    components = []
+    for i in range(k):
+        if i < k-1:
+            # First k-1 components: mean_vec + c * ortho_components[i]
+            v_flat = mean_vec + c * ortho_components[i]
+        else:
+            # Last component: mean_vec - c * sum of other ortho components
+            v_flat = mean_vec - c * sum(ortho_components[:k-1])
+        components.append(v_flat.reshape(original_shape))
+    
+    return components

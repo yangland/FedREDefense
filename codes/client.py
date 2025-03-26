@@ -869,6 +869,9 @@ class Client_UtCos(Device):
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
+        self.benign_grad = dict()
+        self.mali_grad = dict()
+        # for the state_dict     
         self.benign_sd = dict()
         self.mali_sd = dict()
 
