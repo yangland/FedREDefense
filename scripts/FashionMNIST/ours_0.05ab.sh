@@ -17,7 +17,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : [ "flame", "multi-krum"],
+    "aggregation_mode" : [ "flame"],
     "pretrained" : [null],
     "save_model" : [1],
     "log_frequency" : [1],
@@ -36,7 +36,8 @@ hyperparameters04='[{
     "beta_": [0],
     "adv_lr": [0.001],
     "percentile": [25],
-    "server_lr": [1.0]
+    "server_lr": [1.0],
+    "if_PGD": ["False"]
     }]'
 
 

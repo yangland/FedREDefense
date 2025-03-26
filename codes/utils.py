@@ -1427,7 +1427,7 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     #     reduce_average(target=target, sources=selected_sources)
     
     if not multi_k:
-        select_ui = select_ui[0]
+        select_ui = [select_ui[0]]
         
     # need another FedAvg step to do the aggregation
     return select_ui
