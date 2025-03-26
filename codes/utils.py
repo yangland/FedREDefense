@@ -1543,8 +1543,8 @@ def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, t
     num_clients = len(sources)
     num_malicious_clients = int(malicious_rate * num_clients)
     num_benign_clients = num_clients - num_malicious_clients
-    t1 = time.time()
-    plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}')
+    # t1 = time.time()
+    # plot_matrix(np.asarray(cos_list), save_name=f'outputs/cosd_matrix_{str(t1)}')
     
     print(f"cos_list len: {len(cos_list)}")
     if np.isnan(cos_list).any():
