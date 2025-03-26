@@ -425,7 +425,8 @@ class Server(Device):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            mali_select_p=reduce_flame(target=self.sd_dict[model_name], sources=[client.sd for client in clients if client.model_name == model_name],
+            mali_select_p=reduce_flame(target=self.sd_dict[model_name], 
+                                       sources=[client.sd for client in clients if client.model_name == model_name],
                                         malicious_rate=malicious_rate,
                                         wrong_mal=wrong_mal,
                                         right_ben=right_ben,

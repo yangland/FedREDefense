@@ -141,7 +141,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
     server = Server(np.unique(model_names), optimizer_fn=optimizer_fn, loader=test_loader,
                     num_classes=num_classes, dataset=hp['dataset'])
 
-    initial_model_state = server.models[0].state_dict().copy()
+    initial_model_state = deepcopy(server.models[0].state_dict())
     two_steps = hp.get("two_steps", False)
     # Ensure it's converted to a proper boolean if it's a string
     if isinstance(two_steps, str):
@@ -277,7 +277,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 mali_clients_get_updates(
                     mali_clients, server, hp["local_epochs"], train_type="benign")
             
-            print("mali clients benign training - finished")
+            print(f"mali clients{mali_ids} benign training - finished")
             
             
             if_PGD = hp.get("if_PGD", True)
@@ -311,6 +311,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         # Both benign and malicous clients compute weight update
         
         for client in participating_clients:
+            print("client.id", client.id)
             client.synchronize_with_server(server)
             train_stats = client.compute_weight_update(hp["local_epochs"])
 

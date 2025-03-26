@@ -58,7 +58,11 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
             "mean_cos_to_mean": cos_to_mean})
     
     # Prepare malicious client for attack
+    if not if_PGD:
+        adv_lr = 0.01
+        
     malicc.reset_lr(new_lr=adv_lr)
+
     
     # Compute attack budget
     budget = max(1e-5, (1 - cos_precentile))
@@ -84,7 +88,7 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
                                                 loader = malicc.sub_loader, 
                                                 optimizer = malicc.optimizer, 
                                                 scheduler = malicc.scheduler, 
-                                                epochs = K, 
+                                                epochs = K-2, 
                                                 model0 = model0, 
                                                 model1 = ben_mean_model, 
                                                 beta_ = beta_, 
@@ -102,23 +106,28 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
         # Clamp values after the check
         # param.data.clamp_(-1e6, 1e6)  # In-place operation
     
-    
-    # Compute and normalize malicious gradient update
-    mali_grad = get_model_update(malicc.sd, malicc.server_state)
-    mali_grad_norm = torch.norm(flat_dict(mali_grad), p=2)
-    # print(f"benign norm {benign_norm}, mali norm {mali_grad_norm}")
-    xp.log({"benign norm": float(benign_norm)})
-    xp.log({"mali grad norm": float(mali_grad_norm)})
-    
-    norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
-    
-    if torch.isnan(norm_mali_flat).any():
-        print("crafted normalized_mali_flat has NA values!")
+    if if_PGD:
+        # Compute and normalize malicious gradient update
+        mali_grad = get_model_update(malicc.sd, malicc.server_state)
+        mali_grad_norm = torch.norm(flat_dict(mali_grad), p=2)
+        # print(f"benign norm {benign_norm}, mali norm {mali_grad_norm}")
+        xp.log({"benign norm": float(benign_norm)})
+        xp.log({"mali grad norm": float(mali_grad_norm)})
         
-    # Scale with lambda and update model
-    mali_sd = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
-    sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
-    
+        norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
+        
+        if torch.isnan(norm_mali_flat).any():
+            print("crafted normalized_mali_flat has NA values!")
+            
+
+        # Scale with lambda and update model
+        mali_sd = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+        sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
+    else:
+        # no normalization process for AB
+        mali_sd = malicc.sd
+        sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
+        
     # Try validate before loading
     try:
         check_state_dict(mali_sd)
@@ -255,7 +264,7 @@ def train_rev_w_cos(model, loader, optimizer, scheduler, epochs, model0, model1,
 
 def train_rev_w_cos_no_budget(model, loader, optimizer, scheduler, epochs, model0, model1, beta_, budget):    
     # for ablation study, no need to use budget and beta
-    budget = 2
+    budget = 1
     
     model.train()
     # model.parameters need to use, no state_dict, the trainable parameters

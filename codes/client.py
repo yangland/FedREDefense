@@ -49,12 +49,16 @@ class Client(Device):
         # named parameters, with gradient
         self.W = {key: value for key, value in self.model.named_parameters()}
         # state_dict, without gradient
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        # self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
 
         self.benign_grad = dict()
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -594,12 +598,16 @@ class Client_MPAF(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        # self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         # per paper, the scale selection are: 10, 1000, 1e6
-        self.scale = 1e6
+        self.scale = 1000
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -609,10 +617,26 @@ class Client_MPAF(Device):
         # import pdb; pdb.set_trace()
         user_grad = OrderedDict()
         # import pdb; pdb.set_trace()
-        for name in self.W:
-            user_grad[name] = self.init_model[name] - self.W[name].detach()
-            self.W[name].data = self.server_state[name] + \
-                self.scale*user_grad[name]
+        
+        print("self.scale", self.scale)
+        
+        # for name in self.W:
+        #     user_grad[name] = self.init_model[name] - self.W[name].detach()
+        #     self.W[name].data = self.server_state[name] + \
+        #         self.scale*user_grad[name]
+
+        for name, param in self.model.state_dict().items():
+            user_grad[name] = self.init_model[name] - param.detach()
+            
+        # Create a new state_dict with updated values
+        new_state_dict = {
+            name: self.server_state[name] + self.scale * user_grad[name]
+            for name in self.model.state_dict()
+        }
+
+        # Load the updated state_dict back into the model
+        self.model.load_state_dict(new_state_dict)
+
 
     def predict_logit(self, x):
         """Softmax prediction on input"""
@@ -831,13 +855,17 @@ class Client_UtCos(Device):
                                 num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        # self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.benign_grad = dict()
         self.mali_grad = dict()
-        
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
+      
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()

@@ -159,8 +159,8 @@ def get_loaders(train_data, test_data, n_clients=10, alpha=0, batch_size=128, n_
     #   import pdb; pdb.set_trace()
     subset_idcs = split_dirichlet(train_data.targets, n_clients, n_data, alpha, seed=seed)
     client_data = [torch.utils.data.Subset(train_data, subset_idcs[i]) for i in range(n_clients)]
-    print("subset_idcs0", subset_idcs[0])
-    print("subset_idcs7", subset_idcs[7])
+    # print("subset_idcs0", subset_idcs[0])
+    # print("subset_idcs7", subset_idcs[7])
 
     client_loaders = [torch.utils.data.DataLoader(subset, batch_size=batch_size, shuffle=True, num_workers=num_workers) for subset in client_data]
     test_loader = torch.utils.data.DataLoader(test_data, batch_size=256, num_workers=num_workers)

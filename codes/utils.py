@@ -1301,6 +1301,9 @@ def eval_op_ensemble_lp_attack(models, loader, class_num):
 
 def reduce_average(target, sources):
     # import pdb; pdb.set_trace()
+    print("sources len", len(sources))
+    print(sources[0]['classifier.weight'])
+    print(sources[1]['classifier.weight'])
     for name in target:
         target[name].data = torch.mean(torch.stack([source[name].detach().float() for source in sources]), dim=0).clone()
     
@@ -1536,7 +1539,7 @@ def compute_robustLR(params, robustLR_threshold, server_lr):
 
 
 def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, turn):
-    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-4).cuda()
+    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6).cuda()
     cos_list=[]
     local_model_vector = []
     # caculate update_params(local gradients) from clients' sources and the target
@@ -1556,8 +1559,8 @@ def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, t
     num_clients = len(sources)
     num_malicious_clients = int(malicious_rate * num_clients)
     num_benign_clients = num_clients - num_malicious_clients
-    # t1 = time.time()
-    # plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}')
+    t1 = time.time()
+    plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}')
     
     print(f"cos_list len: {len(cos_list)}")
     if np.isnan(cos_list).any():
