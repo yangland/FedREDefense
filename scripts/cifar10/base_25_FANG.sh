@@ -8,10 +8,10 @@ hyperparameters04='[{
     "models" : [{"resnet18": 20}],
 
     "attack_rate" :  [0.25],
-    "attack_method": ["Min-Max"],
+    "attack_method": ["Fang"],
     "participation_rate" : [1],
 
-    "alpha" : [0.5],
+    "alpha" : [0.1],
     "communication_rounds" : [200],
     "local_epochs" : [1],
     "mali_local_epochs": [5],

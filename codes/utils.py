@@ -1427,7 +1427,12 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     #     reduce_average(target=target, sources=selected_sources)
     
     if not multi_k:
+        print("no multi_k")
         select_ui = [select_ui[0]]
+    
+    if not isinstance(select_ui, (list, np.ndarray)):
+        select_ui = [select_ui]  # Wrap it in a list
+
         
     # need another FedAvg step to do the aggregation
     return select_ui
@@ -1531,7 +1536,7 @@ def compute_robustLR(params, robustLR_threshold, server_lr):
 
 
 def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, turn):
-    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6).cuda()
+    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-4).cuda()
     cos_list=[]
     local_model_vector = []
     # caculate update_params(local gradients) from clients' sources and the target
@@ -1554,6 +1559,12 @@ def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, t
     # t1 = time.time()
     # plot_matrix(np.asarray(cos_list), save_name=f'cosd_matrix_{str(t1)}')
     
+    print(f"cos_list len: {len(cos_list)}")
+    if np.isnan(cos_list).any():
+        print("NaN detected in cos_list!")
+        print(f"NaN locations: {np.where(np.isnan(cos_list))}")
+        cos_list = np.nan_to_num(cos_list, nan=0.0)
+
     clusterer = hdbscan.HDBSCAN(min_cluster_size=num_clients//2 + 1,min_samples=1,allow_single_cluster=True).fit(cos_list)
     logger.info(f"flame clusterer.labels_ {str(clusterer.labels_)}")
     benign_client = []
@@ -1589,6 +1600,12 @@ def reduce_flame(target, sources, malicious_rate, wrong_mal, right_ben, noise, t
     # logger.info(f"mali vs ben: {wrong_mal}, {right_ben}; mali% {(round(wrong_mal/(wrong_mal+right_ben)*100, 4))}")
     # logger.info(f'flame % of malicious selected: {float(wrong_mal/(num_malicious_clients*turn + 1e-9))}')
     # logger.info(f'flame % of benign selected: {float(right_ben/(num_benign_clients*turn + 1e-9))}')
+    
+    if np.isnan(norm_list).any():
+        norm_list = [val for val in norm_list if not np.isnan(val)] 
+    
+    if len(norm_list) == 0:
+        raise ValueError("norm_list is empty after NaN removal, cannot compute median.")
     
     clip_value = np.median(norm_list)
     for i in range(len(benign_client)):

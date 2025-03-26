@@ -11,13 +11,13 @@ hyperparameters04='[{
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
-    "alpha" : [0.5],
+    "alpha" : [0.1],
     "communication_rounds" : [200],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.1}]],
-    "aggregation_mode" : ["FedAVG", "median", "flame", "NormBound", "krum", "multi-krum", "rfa"],
+    "aggregation_mode" : [ "krum", "multi-krum", "rfa"],
     "pretrained" : [null],
     "save_model" : [1],
     "log_frequency" : [1],
@@ -34,8 +34,8 @@ hyperparameters04='[{
     "uniformed_att": ["True"],
     "beta_": [0.05],
     "lambda_": [1],
-    "adv_lr": [0.1],
-    "percentile": [25],
+    "adv_lr": [0.01],
+    "percentile": [50],
     "server_lr": [1.0]
     }]'
 
