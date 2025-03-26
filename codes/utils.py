@@ -1302,8 +1302,8 @@ def eval_op_ensemble_lp_attack(models, loader, class_num):
 def reduce_average(target, sources):
     # import pdb; pdb.set_trace()
     print("sources len", len(sources))
-    print(sources[0]['classifier.weight'])
-    print(sources[1]['classifier.weight'])
+    # print(sources[0]['classifier.weight'])
+    # print(sources[1]['classifier.weight'])    
     for name in target:
         target[name].data = torch.mean(torch.stack([source[name].detach().float() for source in sources]), dim=0).clone()
     
@@ -1400,6 +1400,7 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     user_num = len(sources)
     user_flatten_grad = flat_grad(target, sources)
 
+    print(f"k: {user_num - krum_mal_num - 2}")
     # compute l2 distance between users
     user_scores = torch.zeros((user_num, user_num), device=user_flatten_grad.device)
     for u_i, source in enumerate(sources):
@@ -1410,13 +1411,13 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
         # import pdb; pdb.set_trace()
         user_scores[u_i, u_i] = float('inf')
         topk_user_scores, _ = torch.topk(
-            user_scores, k=user_num - krum_mal_num - 2, dim=1, largest=False
+            user_scores, k=max(user_num - krum_mal_num - 2, 1), dim=1, largest=False
         )
     sm_user_scores = torch.sum(topk_user_scores, dim=1)
 
     # users with smallest score is selected as update gradient
     # u_score, select_ui = torch.topk(sm_user_scores, k=krum_mal_num, largest=False)
-    u_score, select_ui = torch.topk(sm_user_scores, k=user_num - krum_mal_num - 2, largest=False)
+    u_score, select_ui = torch.topk(sm_user_scores, k=max(user_num - krum_mal_num - 2, 1), largest=False)
     select_ui = select_ui.cpu().numpy()
     
     # if not multi_k:
@@ -1429,14 +1430,15 @@ def reduce_krum(target, sources, mali_ratio, multi_k=True):
     #     selected_sources = [sources[i] for i in select_ui]
     #     reduce_average(target=target, sources=selected_sources)
     
-    if not multi_k:
-        print("no multi_k")
-        select_ui = [select_ui[0]]
+
     
     if not isinstance(select_ui, (list, np.ndarray)):
         select_ui = [select_ui]  # Wrap it in a list
 
-        
+    print("select_ui", select_ui)
+    if not multi_k:
+        print("no multi_k")
+        select_ui = [select_ui[0]]    
     # need another FedAvg step to do the aggregation
     return select_ui
 
@@ -2565,3 +2567,16 @@ def filter_state_dict(model_sd, v_layers_indices):
     state_dict = model_sd
     selected_layers = {k: v for i, (k, v) in enumerate(state_dict.items()) if i in v_layers_indices}
     return selected_layers
+
+def update_model_with_malicious_gradient(model, sd, server_state, mal_update):
+    """Updates the model parameters using the malicious gradient update."""
+    new_state_dict = {}
+    idx = 0  # Ensure idx is initialized before the loop
+
+    for name in sd:
+        user_grad = mal_update[idx:(idx + sd[name].numel())].reshape(sd[name].shape)
+        new_state_dict[name] = server_state[name] + user_grad
+        idx += sd[name].numel()
+
+    # Load the updated state_dict into the model
+    model.load_state_dict(new_state_dict, strict=False)

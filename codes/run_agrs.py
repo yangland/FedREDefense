@@ -203,10 +203,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                    idnum=i, num_classes=num_classes, dataset=hp['dataset']))
                 elif hp["attack_method"] == "DBA":
                     clients.append(Client_DBA(model_name, optimizer_fn, loader,
-                                   idnum=i, num_classes=num_classes, dataset=hp['dataset']))
-                elif hp["attack_method"] == "UAM":
-                    clients.append(Client_UAM(model_name, optimizer_fn, loader,
-                                   idnum=i, num_classes=num_classes, dataset=hp['dataset']))                    
+                                   idnum=i, num_classes=num_classes, dataset=hp['dataset']))                  
                 elif hp["attack_method"] == "AOP":
                     clients.append(Client_AOP(model_name, optimizer_fn, loader, idnum=i,
                                    num_classes=num_classes, dataset=hp['dataset'], obj=hp['objective']))
@@ -234,11 +231,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                     search_algo=hp["search_algo"], obj=hp["objective"])
                     
                     
-                    if hp["attack_method"] == "UAM":
-                        # The first attack action to try
-                        x0 = [0.5, 0.5, 1]
-                        malicc.search_initial(x0)
-                    elif hp["attack_method"] == "untargeted_cos":
+                    if hp["attack_method"] == "untargeted_cos":
                         malicc.sub_loader = malicc.get_sub_dataloader(size=608)
 
 
@@ -277,6 +270,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 mali_clients_get_updates(
                     mali_clients, server, hp["local_epochs"], train_type="benign")
             
+            mali_ids.sort()
             print(f"mali clients{mali_ids} benign training - finished")
             
             
@@ -298,7 +292,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                 if_PGD=if_PGD)
                 
                 for client in mali_clients:
-                    client.model.load_state_dict(mali_sd)
+                    client.mali_sd = mali_sd
                 
                 xp.log({"vali_server": next(iter(acc_results0))[1]})
                 xp.log({"acc_benign_mean": next(iter(acc_benign_mean))[1]})

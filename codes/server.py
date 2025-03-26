@@ -162,7 +162,9 @@ class Server(Device):
         exit()
 
     def select_clients(self, clients, frac=1.0):
-        return random.sample(clients, int(len(clients)*frac))
+        sampled_clients = random.sample(clients, int(len(clients) * frac))  # Random sampling
+        return sorted(sampled_clients, key=lambda c: c.id)  # Sort by client.id
+
 
     def select_clients_masked(self, clients, frac=1.0, mask=None):
         # return [clients[0]]

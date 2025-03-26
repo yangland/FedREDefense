@@ -100,11 +100,14 @@ class Client_flip(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.num_classes = num_classes
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -144,11 +147,14 @@ class Client_tr_flip(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.num_classes = num_classes
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -188,8 +194,6 @@ class Client_MinMax(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
-
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scale = 1
@@ -197,6 +201,10 @@ class Client_MinMax(Device):
         self.mal_user_grad_std2 = None
         self.all_grads = None
         self.benign_grad = dict()
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -251,11 +259,14 @@ class Client_MinMax(Device):
 
         idx = 0
         user_grad = OrderedDict()
-        for name in self.W:
-            user_grad[name] = mal_update[idx:(
-                idx+self.W[name].numel())].reshape(self.W[name].shape)
-            self.W[name].data = self.server_state[name] + user_grad[name]
-            idx += self.W[name].numel()
+
+        # for name in self.W:
+        #     user_grad[name] = mal_update[idx:(
+        #         idx+self.W[name].numel())].reshape(self.W[name].shape)
+        #     self.W[name].data = self.server_state[name] + user_grad[name]
+        #     idx += self.W[name].numel()
+            
+        update_model_with_malicious_gradient(self.model, self.sd, self.server_state, mal_update)
 
     def predict_logit(self, x):
         """Softmax prediction on input"""
@@ -356,14 +367,15 @@ class Client_MinSum(Device):
 
         idx = 0
         user_grad = OrderedDict()
-        for name in self.W:
-            user_grad[name] = mal_update[idx:(
-                idx+self.W[name].numel())].reshape(self.W[name].shape)
-            self.W[name].data = self.server_state[name] + user_grad[name]
-            idx += self.W[name].numel()
-        # import pdb; pdb.set_trace()
-        # return train_stats
-        # print(self.W['classification_layer.bias'])
+        
+
+        # for name in self.W:
+        #     user_grad[name] = mal_update[idx:(
+        #         idx+self.W[name].numel())].reshape(self.W[name].shape)
+        #     self.W[name].data = self.server_state[name] + user_grad[name]
+        #     idx += self.W[name].numel()
+
+        update_model_with_malicious_gradient(self.model, self.sd, self.server_state, mal_update)
 
     def predict_logit(self, x):
         """Softmax prediction on input"""
@@ -386,28 +398,24 @@ class Client_MinSum(Device):
         return y_
 
 
-def compute_lambda(all_updates, model_re, n_attackers):
-    # import pdb; pdb.set_trace()
-    distances = []
-    n_benign, d = all_updates.shape
-    for update in all_updates:
-        distance = nd.norm(all_updates - update, axis=1)
-        distances.append(distance)
-    distances = nd.stack(*distances)
+    def compute_lambda(all_updates, model_re, n_attackers):
+        # import pdb; pdb.set_trace()
+        distances = []
+        n_benign, d = all_updates.shape
+        for update in all_updates:
+            distance = nd.norm(all_updates - update, axis=1)
+            distances.append(distance)
+        distances = nd.stack(*distances)
 
-    distances = nd.sort(distances, axis=1)
-    scores = nd.sum(distances[:, :n_benign - 1 - n_attackers], axis=1)
-    min_score = nd.min(scores)
-    term_1 = min_score / ((n_benign - n_attackers - 1)
-                          * nd.sqrt(nd.array([d]))[0])
-    max_wre_dist = nd.max(nd.norm(all_updates - model_re,
-                          axis=1)) / (nd.sqrt(nd.array([d]))[0])
+        distances = nd.sort(distances, axis=1)
+        scores = nd.sum(distances[:, :n_benign - 1 - n_attackers], axis=1)
+        min_score = nd.min(scores)
+        term_1 = min_score / ((n_benign - n_attackers - 1)
+                            * nd.sqrt(nd.array([d]))[0])
+        max_wre_dist = nd.max(nd.norm(all_updates - model_re,
+                            axis=1)) / (nd.sqrt(nd.array([d]))[0])
 
-    return (term_1 + max_wre_dist)
-
-
-
-
+        return (term_1 + max_wre_dist)
 
 
 
@@ -467,13 +475,15 @@ class Client_Krum(Device):
             mal_update = (model_re - lamda * deviation)
         else:
             mal_update = model_re - model_re
-        idx = 0
-        user_grad = OrderedDict()
-        for name in self.W:
-            user_grad[name] = mal_update[idx:(
-                idx+self.W[name].numel())].reshape(self.W[name].shape)
-            self.W[name].data = self.server_state[name] + user_grad[name]
-            idx += self.W[name].numel()
+        # idx = 0
+        # user_grad = OrderedDict()
+        # for name in self.W:
+        #     user_grad[name] = mal_update[idx:(
+        #         idx+self.W[name].numel())].reshape(self.W[name].shape)
+        #     self.W[name].data = self.server_state[name] + user_grad[name]
+        #     idx += self.W[name].numel()
+            
+        update_model_with_malicious_gradient(self.model, self.sd, self.server_state, mal_update)
 
     def predict_logit(self, x):
         """Softmax prediction on input"""
@@ -557,14 +567,14 @@ class Client_Fang(Device):
         else:
             mal_update = model_re - model_re
         # import pdb; pdb.set_trace()
-        idx = 0
-        user_grad = OrderedDict()
-        for name in self.W:
-            user_grad[name] = mal_update[idx:(
-                idx+self.W[name].numel())].reshape(self.W[name].shape)
-            self.W[name].data = self.server_state[name] + user_grad[name]
-            idx += self.W[name].numel()
-        # print(self.W['classification_layer.bias'])
+        # idx = 0
+        # user_grad = OrderedDict()
+        # for name in self.W:
+        #     user_grad[name] = mal_update[idx:(
+        #         idx+self.W[name].numel())].reshape(self.W[name].shape)
+        #     self.W[name].data = self.server_state[name] + user_grad[name]
+        #     idx += self.W[name].numel()
+        update_model_with_malicious_gradient(self.model, self.sd, self.server_state, mal_update)
 
     def predict_logit(self, x):
         """Softmax prediction on input"""
@@ -859,8 +869,8 @@ class Client_UtCos(Device):
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.benign_grad = dict()
-        self.mali_grad = dict()
+        self.benign_sd = dict()
+        self.mali_sd = dict()
 
     @property
     def sd(self):
@@ -877,74 +887,75 @@ class Client_UtCos(Device):
         return train_stats
 
     def compute_weight_update(self, epochs=1, loader=None):
-        # uniformed attack, client.W udpated untargeted_cos_budget_attack
-        return None
+        self.model.load_state_dict(self.mali_sd)
+        
+        
 
         
 
-class Client_UAM(Device):
-    def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset='cifar10'):
-        super().__init__(loader)
-        self.id = idnum
-        self.model_name = model_name
-        self.model_fn = partial(model_utils.get_model(self.model_name)[
-                                0], num_classes=num_classes, dataset=dataset)
-        self.model = self.model_fn().to(device)
+# class Client_UAM(Device):
+#     def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset='cifar10'):
+#         super().__init__(loader)
+#         self.id = idnum
+#         self.model_name = model_name
+#         self.model_fn = partial(model_utils.get_model(self.model_name)[
+#                                 0], num_classes=num_classes, dataset=dataset)
+#         self.model = self.model_fn().to(device)
 
-        self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
-        self.init_model = None
-        self.optimizer_fn = optimizer_fn
-        self.optimizer = self.optimizer_fn(self.model.parameters())
-        self.scale = 3
-        self.benign_grad = dict()
-        self.mali_grad = None
+#         self.W = {key: value for key, value in self.model.named_parameters()}
+#         self.sd = {key: value for key, value in self.model.state_dict().items()}
+#         self.init_model = None
+#         self.optimizer_fn = optimizer_fn
+#         self.optimizer = self.optimizer_fn(self.model.parameters())
+#         self.scale = 3
+#         self.benign_grad = dict()
+#         self.mali_grad = None
         
 
-    def synchronize_with_server(self, server):
-        self.server_state = server.model_dict[self.model_name].state_dict()
-        self.model.load_state_dict(self.server_state, strict=False)
+#     def synchronize_with_server(self, server):
+#         self.server_state = server.model_dict[self.model_name].state_dict()
+#         self.model.load_state_dict(self.server_state, strict=False)
 
-    def compute_weight_benign_update(self, epochs=1, loader=None):
-        train_stats = train_op(
-            self.model, self.loader if not loader else loader, self.optimizer, epochs)
-        return train_stats
+#     def compute_weight_benign_update(self, epochs=1, loader=None):
+#         train_stats = train_op(
+#             self.model, self.loader if not loader else loader, self.optimizer, epochs)
+#         return train_stats
 
-    def compute_cos_simility_to_mean(self, per_layer=False):
-        # Calculate the cos similiaty (in degrees) between the mean of benign_updates of malicous client and
-        # each malicoius client
-        cos = nn.CosineSimilarity(dim=0, eps=1e-9)
-        cos_simility_per_layer = None
-        cos_simility_flat = math.degrees(cos(flat_dict(self.mal_user_grad_mean2),
-                                             flat_dict(self.benign_grad)).item())
+#     def compute_cos_simility_to_mean(self, per_layer=False):
+#         # Calculate the cos similiaty (in degrees) between the mean of benign_updates of malicous client and
+#         # each malicoius client
+#         cos = nn.CosineSimilarity(dim=0, eps=1e-9)
+#         cos_simility_per_layer = None
+#         cos_simility_flat = math.degrees(cos(flat_dict(self.mal_user_grad_mean2),
+#                                              flat_dict(self.benign_grad)).item())
 
-        if per_layer:
-            cos_simility_per_layer = dict()
-            for name in self.W:
-                cos_simility_per_layer[name] = math.degrees(cos(torch.flatten(self.mal_user_grad_mean2[name].detach()),
-                                                                torch.flatten(self.benign_grad[name])).item())
-        # print("cos_simility_per_layer", cos_simility_per_layer)
-        # print("cos_simility_flat", cos_simility_flat)
-        return cos_simility_flat, cos_simility_per_layer
+#         if per_layer:
+#             cos_simility_per_layer = dict()
+#             for name in self.W:
+#                 cos_simility_per_layer[name] = math.degrees(cos(torch.flatten(self.mal_user_grad_mean2[name].detach()),
+#                                                                 torch.flatten(self.benign_grad[name])).item())
+#         # print("cos_simility_per_layer", cos_simility_per_layer)
+#         # print("cos_simility_flat", cos_simility_flat)
+#         return cos_simility_flat, cos_simility_per_layer
 
-        # construct malicious model weight based command from search_algo
-    def compute_weight_update(self, epochs=1, loader=None):
-        for name in self.W:
-            self.W[name].data = self.server_state[name] + self.W[name].data
+#         # construct malicious model weight based command from search_algo
+#     def compute_weight_update(self, epochs=1, loader=None):
+#         for name in self.W:
+#             self.W[name].data = self.server_state[name] + self.W[name].data
 
-    def predict_logit(self, x):
-        """Softmax prediction on input"""
-        self.model.train()
+#     def predict_logit(self, x):
+#         """Softmax prediction on input"""
+#         self.model.train()
 
-        with torch.no_grad():
-            y_ = self.model(x)
+#         with torch.no_grad():
+#             y_ = self.model(x)
 
-        return y_
+#         return y_
 
-    def predict_logit_eval(self, x):
-        """Softmax prediction on input"""
-        self.model.eval()
-        with torch.no_grad():
-            y_ = self.model(x)
+#     def predict_logit_eval(self, x):
+#         """Softmax prediction on input"""
+#         self.model.eval()
+#         with torch.no_grad():
+#             y_ = self.model(x)
 
-        return y_
+#         return y_
