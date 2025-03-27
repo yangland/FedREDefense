@@ -622,7 +622,7 @@ class MaliCC(Device):
                                 0], num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        # self.sd = {key: value for key, value in self.model.state_dict().items()}
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=1)
@@ -638,6 +638,14 @@ class MaliCC(Device):
         self.sub_loader = None
         self.data = data
         self.server_state = None
+        
+        # store for last iteration
+        self.benign_sd_last = None
+        self.mali_sd_last = None
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def reset_lr(self, new_lr):
         self.scheduler._step_count = 0

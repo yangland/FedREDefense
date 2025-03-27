@@ -21,10 +21,14 @@ def check_state_dict(state_dict):
                 raise ValueError(f"Inf detected in {key}")
     print("State dictionary is valid.")
 
+
 def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
                                  model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile, if_PGD=True,
-                                 norm_discount=0.1):
+                                lambda_searcher=None, search_lambda=True):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
+
+    
+    
     adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
     
     # Synchronize malicious client with the server
@@ -64,7 +68,6 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
         adv_lr = 0.01
         
     malicc.reset_lr(new_lr=adv_lr)
-
     
     # Compute attack budget
     budget = max(1e-8, cos_precentile)
@@ -116,16 +119,41 @@ def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal
         xp.log({"benign norm": float(benign_norm)})
         xp.log({"mali grad norm": float(mali_grad_norm)})
         
-        xp.log({"norm_discount": float(norm_discount)})
         norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
-        norm_mali_flat *= norm_discount
         
+
         if torch.isnan(norm_mali_flat).any():
             print("crafted normalized_mali_flat has NA values!")
-            
 
+        
+        # # TODO optimizer search for norm_discount lambda
+        # norm_discount = lambda_searcher.update(s_t = malicc.server_state,
+        #                                        m = malicc.mali_sd_last, 
+        #                                        b = malicc.benign_sd_last)
+        # xp.log({"norm_discount": float(norm_discount)})
+        # norm_mali_flat *= norm_discount
+        # malicc.benign_sd_last = deepcopy(benign_mean_sd)
+        # malicc.mali_sd_last = deepcopy(malicc.server_state)
+        
+        # First-call detection
+        if not hasattr(untargeted_cos_budget_attack, '_initialized'):
+            # First-time initialization
+            untargeted_cos_budget_attack._initialized = True
+            print("First call detected - initializing lambda searcher")
+
+            lambda_ = lambda_searcher.choose_lambda()
+        else:
+            print("++++ iteration - lambda search")
+            lambda_ = lambda_searcher.choose_lambda()
+            print(f"Lambda before update: {lambda_searcher.pending_lambda}")  # Debugging output
+            lambda_searcher.update(next(iter(acc_results0))[1]) 
+            
+        xp.log({"lambda_": float(lambda_)})
+
+        norm_mali_flat *= lambda_
+        
         # Scale with lambda and update model
-        mali_sd = restore_dict_grad_flat(norm_mali_flat * lambda_, malicc.server_state, malicc.model.state_dict())
+        mali_sd = restore_dict_grad_flat(norm_mali_flat, malicc.server_state, malicc.model.state_dict())
         sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
     else:
         # no normalization process for AB

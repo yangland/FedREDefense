@@ -18,6 +18,7 @@ import datetime
 from csv_logging import CsvLogging
 from our_attack import *
 import data_f, models
+from search_algo import *
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
@@ -166,7 +167,11 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         v_layers_indices = sorted(range(len(sensitivity_scores)), key=lambda i: sensitivity_scores[i], reverse=True)
         xp.log({"v_layers_indices": v_layers_indices})
         logger.info(f"pre-assessment layers order: {', '.join([layer_names[i] for i in v_layers_indices])}")
-        
+    elif hp["attack_method"] == "untargeted_cos":
+        # lambda_searcher = OnlineLambdaOptimizer(lambda_init=0.5,
+        #                                         tol=1e-5,
+        #                                         device=device)
+        lambda_searcher = AttackThompsonSampling(alpha=1, beta=1, window_size=50, momentum=0.4, min_step=0.05) 
         
     if hp["attack_rate"] == 0:
         clients = [Client(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset=hp['dataset'])
@@ -290,7 +295,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                 adv_lr = hp["adv_lr"], 
                                 percentile = hp["percentile"],
                                 if_PGD=if_PGD,
-                                norm_discount= hp.get("norm_discount", 0.1))
+                                lambda_searcher= lambda_searcher)
                 
                 # sd_list = decompose_sd(mali_sd, num=len(mali_clients), budget=sd_cos*10)
                 # for i in range(len(mali_clients)):
