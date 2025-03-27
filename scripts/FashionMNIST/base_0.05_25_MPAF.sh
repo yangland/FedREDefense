@@ -1,23 +1,23 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "rfa", "krum", "flame", "NormBound", "trmean"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
-export CUDA_VISIBLE_DEVICES='7'
+export CUDA_VISIBLE_DEVICES='2'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
-    "models" : [{"ConvNet" : 100}],
+    "models" : [{"ConvNet" : 20}],
 
     "attack_rate" :  [0.25],
     "attack_method": ["MPAF"],
     "participation_rate" : [1],
 
     "alpha" : [0.05],
-    "communication_rounds" : [500],
+    "communication_rounds" : [200],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
     "batch_size" : [32],
-    "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["FedAVG", "median", "flame", "NormBound", "krum", "multi-krum", "rfa"],
+    "local_optimizer" : [ ["SGD", {"lr": 0.01}]],
+    "aggregation_mode" : ["FedAVG", "median", "flame", "NormBound", "krum", "multi-krum", "rfa", "fltrust"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
