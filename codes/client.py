@@ -49,7 +49,7 @@ class Client(Device):
         # named parameters, with gradient
         self.W = {key: value for key, value in self.model.named_parameters()}
         # state_dict, without gradient
-        # self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -299,7 +299,7 @@ class Client_MinSum(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -308,6 +308,11 @@ class Client_MinSum(Device):
         self.mal_user_grad_std2 = None
         self.all_grads = None
         self.benign_grad = dict()
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
+
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -398,25 +403,6 @@ class Client_MinSum(Device):
         return y_
 
 
-    def compute_lambda(all_updates, model_re, n_attackers):
-        # import pdb; pdb.set_trace()
-        distances = []
-        n_benign, d = all_updates.shape
-        for update in all_updates:
-            distance = nd.norm(all_updates - update, axis=1)
-            distances.append(distance)
-        distances = nd.stack(*distances)
-
-        distances = nd.sort(distances, axis=1)
-        scores = nd.sum(distances[:, :n_benign - 1 - n_attackers], axis=1)
-        min_score = nd.min(scores)
-        term_1 = min_score / ((n_benign - n_attackers - 1)
-                            * nd.sqrt(nd.array([d]))[0])
-        max_wre_dist = nd.max(nd.norm(all_updates - model_re,
-                            axis=1)) / (nd.sqrt(nd.array([d]))[0])
-
-        return (term_1 + max_wre_dist)
-
 
 
 class Client_Krum(Device):
@@ -430,7 +416,7 @@ class Client_Krum(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -439,6 +425,10 @@ class Client_Krum(Device):
         self.mal_user_grad_std2 = None
         self.all_grads = None
         self.benign_grad = dict()
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(
@@ -505,6 +495,24 @@ class Client_Krum(Device):
 
         return y_
 
+def compute_lambda(all_updates, model_re, n_attackers):
+    # import pdb; pdb.set_trace()
+    distances = []
+    n_benign, d = all_updates.shape
+    for update in all_updates:
+        distance = nd.norm(all_updates - update, axis=1)
+        distances.append(distance)
+    distances = nd.stack(*distances)
+
+    distances = nd.sort(distances, axis=1)
+    scores = nd.sum(distances[:, :n_benign - 1 - n_attackers], axis=1)
+    min_score = nd.min(scores)
+    term_1 = min_score / ((n_benign - n_attackers - 1)
+                        * nd.sqrt(nd.array([d]))[0])
+    max_wre_dist = nd.max(nd.norm(all_updates - model_re,
+                        axis=1)) / (nd.sqrt(nd.array([d]))[0])
+
+    return (term_1 + max_wre_dist)
 
 class Client_Fang(Device):
     def __init__(self, model_name, optimizer_fn, loader, idnum=0, num_classes=10, dataset='cifar10'):
@@ -517,7 +525,7 @@ class Client_Fang(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
 
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -526,6 +534,10 @@ class Client_Fang(Device):
         self.mal_user_grad_std2 = None
         self.all_grads = None
         self.benign_grad = dict()
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def compute_weight_benign_update(self, epochs=1, loader=None):
         train_stats = train_op(
@@ -608,7 +620,7 @@ class Client_MPAF(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        # self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -677,11 +689,15 @@ class Client_Scaling(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scale = 3
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -730,11 +746,15 @@ class Client_DBA(Device):
         self.model = self.model_fn().to(device)
 
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scale = 3
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
@@ -781,7 +801,7 @@ class Client_AOP(Device):
         self.model = self.model_fn().to(device)
         self.num_classes = num_classes
         self.W = {key: value for key, value in self.model.named_parameters()}
-        self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -801,6 +821,10 @@ class Client_AOP(Device):
         self.mali_mean = None
         self.critical_layer = None
         self.uniformed_att = False
+
+    @property
+    def sd(self):
+        return self.model.state_dict()
 
     def synchronize_with_server(self, server):
         server_state = server.model_dict[self.model_name].state_dict()
@@ -865,7 +889,7 @@ class Client_UtCos(Device):
                                 num_classes=num_classes, dataset=dataset)
         self.model = self.model_fn().to(device)
         self.W = {key: value for key, value in self.model.named_parameters()}
-        # self.sd = {key: value for key, value in self.model.state_dict().items()}
+        
         self.init_model = None
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
@@ -879,7 +903,6 @@ class Client_UtCos(Device):
     def sd(self):
         return self.model.state_dict()
       
-
     def synchronize_with_server(self, server):
         self.server_state = server.model_dict[self.model_name].state_dict()
         self.model.load_state_dict(self.server_state, strict=False)    
