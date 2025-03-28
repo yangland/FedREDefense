@@ -7,8 +7,8 @@ hyperparameters04='[{
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 10}], 
 
-    "attack_rate" :  [0.4],
-    "attack_method": ["untargeted_cos"],
+    "attack_rate" :  [0],
+    "attack_method": ["NO"],
     "participation_rate" : [1],
 
     "alpha" : [0.05],
@@ -17,7 +17,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.001}]],
-    "aggregation_mode" : ["flame"],
+    "aggregation_mode" : ["multi-krum"],
     "pretrained" : [null],
     "save_model" : [1],
     "log_frequency" : [1],
