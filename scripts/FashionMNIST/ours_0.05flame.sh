@@ -3,17 +3,17 @@ cmdargs=$1
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
 # log_ticks [0., 0.06498813, 0.16798738, 0.33123019, 0.5899526 ,1. ])
 
-export CUDA_VISIBLE_DEVICES='1'
+export CUDA_VISIBLE_DEVICES='7'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 20}],
 
-    "attack_rate" :  [ 0.4],
+    "attack_rate" :  [ 0.25],
     "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
-    "alpha" : [0.05],
+    "alpha" : [0.5, 0.1, 0.05],
     "communication_rounds" : [200],
     "local_epochs" : [1],
     "mali_local_epochs": [5],
@@ -34,7 +34,7 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "lambda_": [0., 0.06498813, 0.16798738, 0.33123019, 0.5899526 , 1. ],
+    "lambda_": [0, 0.06498813, 0.16798738, 0.33123019, 0.5899526 , 1 ],
     "beta_": [0],
     "adv_lr": [0.001],
     "percentile": [50],
