@@ -417,7 +417,6 @@ class Client_Krum(Device):
 
         self.W = {key: value for key, value in self.model.named_parameters()}
         
-
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         self.scale = 1
