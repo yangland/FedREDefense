@@ -1,6 +1,7 @@
 cmdargs=$1
 # aggregation_mode: "FedAVG","median", "rfa", "krum", "flame", "NormBound", "trmean"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
+# [0., 0.06498813, 0.16798738, 0.33123019, 0.5899526 ,1. ]
 export CUDA_VISIBLE_DEVICES='6'
 hyperparameters04='[{
     "random_seed" : [4],
@@ -17,7 +18,7 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.01}]],
-    "aggregation_mode" : ["FedAVG", "median", "flame", "NormBound", "krum", "multi-krum", "rfa", "fltrust"],
+    "aggregation_mode" : ["FedAVG", "median", "flame", "NormBound", "krum", "multi-krum", "rfa"],
     "pretrained" : [null],
     "save_model" : [null],
     "log_frequency" : [1],
@@ -32,10 +33,10 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "lambda_": [3],
-    "beta_": [0.4],
+    "lambda_": [1],
+    "beta_": [0],
     "adv_lr": [0.005],
-    "percentile": [25],
+    "percentile": [50],
     "server_lr": [1.0]
     }]'
 

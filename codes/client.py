@@ -625,7 +625,7 @@ class Client_MPAF(Device):
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
         # per paper, the scale selection are: 10, 1000, 1e6
-        self.scale = 1000
+        self.scale = 1e6
 
     @property
     def sd(self):

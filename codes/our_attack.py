@@ -51,7 +51,7 @@ def untargeted_cos_budget_attack(
     norm_list = np.array([
         torch.norm(torch.tensor(grad), p=2).item() for grad in ben_grad_all
     ])
-    benign_norm = np.median(norm_list)
+    benign_grad_norm = np.median(norm_list)
 
     # Initialize and restore benign mean model
     ben_mean_model = adhoc_model_fn().to(device)
@@ -61,7 +61,7 @@ def untargeted_cos_budget_attack(
     ben_mean_model.load_state_dict(benign_mean_sd)
     benign_mean_w = filter_trainable_state_dict(ben_mean_model)
 
-    server_to_benign = cos_dist_w(
+    server_to_benign_cos = cos_dist_w(
         flat_dict(benign_mean_sd), flat_dict(malicc.server_state)
     ).detach().item()
 
@@ -75,7 +75,7 @@ def untargeted_cos_budget_attack(
         "cos_med": cos_med,
         "cos_percentile": cos_percentile,
         "cos_std": cos_std,
-        "server_to_benign": server_to_benign,
+        "server_to_benign_cos": server_to_benign_cos,
     })
 
     # Prepare malicious client for attack
@@ -112,9 +112,11 @@ def untargeted_cos_budget_attack(
     if if_PGD:
         mali_grad = get_model_update(malicc.sd, malicc.server_state)
         mali_grad_norm = torch.norm(flat_dict(mali_grad), p=2)
-        xp.log({"benign_norm": float(benign_norm), "mali_grad_norm": float(mali_grad_norm)})
+        xp.log({"benign_grad_norm": float(benign_grad_norm), "mali_grad_norm": float(mali_grad_norm)})
+        mali_div_benign_norm_rate = float(mali_grad_norm/(benign_grad_norm + 1e-9))
+        xp.log({"mali_div_benign_norm_rate": mali_div_benign_norm_rate})
 
-        mali_grad_norm_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm
+        mali_grad_norm_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_grad_norm
         if torch.isnan(mali_grad_norm_flat).any():
             print("Crafted normalized_mali_flat has NA values!")
 
@@ -139,6 +141,8 @@ def untargeted_cos_budget_attack(
             mali_grad_norm_flat *= lambda_
 
         xp.log({"lambda_": float(lambda_)})
+        if mali_div_benign_norm_rate < lambda_:
+            print("Scaling factor lambda is larger then mali_div_benign_norm_rate, causing d_cos overbudget")
         
         benign_grad = get_model_update(benign_mean_sd, malicc.server_state)
         mali_benign_grads_cos = cos_dist_w(mali_grad_norm_flat, flat_dict(benign_grad)).detach().item()

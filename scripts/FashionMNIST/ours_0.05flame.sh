@@ -1,14 +1,16 @@
 cmdargs=$1
-# aggregation_mode: "FedAVG","median", "rfa", "krum", "flame", "NormBound", "trmean"
+# aggregation_mode: "FedAVG","median", "NormBound","trmean","krum","flame", "RLR"
 # attack_method: "label_flip", "targeted_label_flip", "Fang", "MPAF", "Min-Max", "Min-Sum", "Scaling", "DBA", "untargeted_cos"
-export CUDA_VISIBLE_DEVICES='6'
+# log_ticks [0., 0.06498813, 0.16798738, 0.33123019, 0.5899526 ,1. ])
+
+export CUDA_VISIBLE_DEVICES='1'
 hyperparameters04='[{
     "random_seed" : [4],
     "dataset" : ["fmnist"],
     "models" : [{"ConvNet" : 20}],
 
-    "attack_rate" :  [0],
-    "attack_method": ["NO"],
+    "attack_rate" :  [ 0.4],
+    "attack_method": ["untargeted_cos"],
     "participation_rate" : [1],
 
     "alpha" : [0.05],
@@ -17,9 +19,9 @@ hyperparameters04='[{
     "mali_local_epochs": [5],
     "batch_size" : [32],
     "local_optimizer" : [ ["SGD", {"lr": 0.01}]],
-    "aggregation_mode" : ["FedAVG", "median", "flame", "NormBound", "krum", "multi-krum", "rfa"],
+    "aggregation_mode" : ["flame"],
     "pretrained" : [null],
-    "save_model" : [null],
+    "save_model" : [1],
     "log_frequency" : [1],
     "log_path" : ["new_noniid/"],
     "robustLR_threshold" : [4] ,
@@ -32,10 +34,10 @@ hyperparameters04='[{
     "critical_layer": ["classifier.weight"],
     "sync_mali_mali_train": ["True"],
     "uniformed_att": ["True"],
-    "lambda_": [1],
-    "beta_": [0.4],
-    "adv_lr": [0.005],
-    "percentile": [25],
+    "lambda_": [0., 0.06498813, 0.16798738, 0.33123019, 0.5899526 , 1. ],
+    "beta_": [0],
+    "adv_lr": [0.001],
+    "percentile": [50],
     "server_lr": [1.0]
     }]'
 
