@@ -221,6 +221,70 @@ class AttackThompsonSampling:
         self.alpha += 0.3 * normalized_harm  # Smaller, stable updates
         self.beta += 0.3 * (1 - normalized_harm)
         
+
+class DirectionAwareAttackSampler:
+    def __init__(self, alpha=1, beta=1, window_size=20, momentum=0.9, min_step=0.05):
+        self.alpha = alpha
+        self.beta = beta
+        self.window_size = window_size
+        self.momentum = momentum
+        self.min_step = min_step
+        self.lambda_history = []
+        self.accuracy_history = []
+        self.delta_history = []
+        self.last_direction = 1  # 1=increasing, -1=decreasing
+        self.last_reward = 0
+        self.ema_lambda = 0.5
+        self.pending_lambda = None  
+
+    def choose_lambda(self):
+        # Initial random sampling if no history
+        if len(self.lambda_history) < 2:
+            return np.clip(np.random.beta(self.alpha, self.beta), 0, 1)
+
+        # Direction-biased sampling
+        base_lambda = np.random.beta(self.alpha, self.beta)
+        
+        # Apply momentum and direction persistence
+        if self.last_reward > 0:  # If last move was successful
+            direction_bias = 0.2 * self.last_direction  # 20% bias toward last direction
+            biased_lambda = base_lambda + direction_bias * (1 if self.last_direction > 0 else -1) * base_lambda
+        else:
+            biased_lambda = base_lambda
+
+        smoothed_lambda = self.momentum * self.ema_lambda + (1 - self.momentum) * biased_lambda
+        
+        # Enforce minimum step in last successful direction
+        if self.last_reward > 0 and len(self.lambda_history) > 0:
+            last_lambda = self.lambda_history[-1]
+            step_size = max(self.min_step, abs(last_lambda - self.lambda_history[-2])) if len(self.lambda_history) > 1 else self.min_step
+            smoothed_lambda = last_lambda + self.last_direction * step_size
+
+        self.pending_lambda = np.clip(smoothed_lambda, 0, 1)
+        self.ema_lambda = smoothed_lambda
+        return self.pending_lambda
+
+    def update(self, current_acc):
+        # Calculate delta and direction
+        if len(self.accuracy_history) > 0:
+            prev_acc = self.accuracy_history[-1]
+            delta_acc = prev_acc - current_acc  # Positive if accuracy decreased
+            
+            if len(self.lambda_history) > 1:
+                self.last_direction = 1 if (self.lambda_history[-1] > self.lambda_history[-2]) else -1
+                self.last_reward = delta_acc  # Reward = accuracy reduction amount
+            
+            self.delta_history.append(delta_acc)
+
+        self.lambda_history.append(self.pending_lambda)
+        self.accuracy_history.append(current_acc)
+        
+        # Update Beta distribution
+        if len(self.delta_history) > 0:
+            reward = np.clip(self.last_reward, -1, 1)  # Normalize reward
+            self.alpha += 0.5 * max(0, reward)  # Only increase alpha for positive rewards
+            self.beta += 0.5 * max(0, -reward)  # Increase beta for negative rewards
+
         
 # class DeltaAwareThompsonSampler:
 #     def __init__(self, alpha=1, beta=1, window_size=30, momentum=0.85, min_step=0.03):
@@ -377,3 +441,104 @@ class DeltaAwareThompsonSampler:
 
                 self.alpha += 0.4 * reward
                 self.beta += 0.4 * (1 - reward)
+
+
+class VibrationAwareAttackSampler:
+    def __init__(self, alpha=1, beta=1, window_size=20, momentum=0.85, 
+                 min_step=0.03, vibration_threshold=0.15):
+        self.alpha = alpha
+        self.beta = beta
+        self.window_size = window_size
+        self.momentum = momentum
+        self.min_step = min_step
+        self.vibration_threshold = vibration_threshold  # Accuracy swing magnitude to trigger stabilization
+        
+        # State tracking
+        self.lambda_history = []
+        self.accuracy_history = []
+        self.delta_history = []
+        self.ema_lambda = 0.5
+        self.pending_lambda = None
+        self.consecutive_vibrations = 0
+
+    def _detect_vibration(self):
+        """Returns True if significant accuracy oscillations detected"""
+        if len(self.delta_history) < 3:
+            return False
+        
+        # Calculate recent accuracy swings
+        recent_deltas = np.array(self.delta_history[-3:])
+        swing_magnitude = np.max(recent_deltas) - np.min(recent_deltas)
+        
+        # Check both magnitude and alternating signs
+        sign_changes = sum(
+            (np.sign(recent_deltas[i]) != np.sign(recent_deltas[i+1]) 
+            for i in range(len(recent_deltas)-1)
+        ))
+        
+        return (swing_magnitude > self.vibration_threshold) and (sign_changes >= 1)
+
+    def choose_lambda(self):
+        # Vibration response - reduce lambda if oscillations detected
+        if self._detect_vibration():
+            self.consecutive_vibrations += 1
+            reduction_factor = min(0.9, 1.0 - (0.1 * self.consecutive_vibrations))
+            new_lambda = self.ema_lambda * reduction_factor
+            self.pending_lambda = max(new_lambda, 0.1)  # Don't go below 0.1
+            return self.pending_lambda
+        else:
+            self.consecutive_vibrations = 0
+
+        # Normal operation - delta-aware selection
+        if len(self.delta_history) < 2:
+            base_lambda = np.random.beta(self.alpha, self.beta)
+            self.pending_lambda = np.clip(base_lambda, 0, 1)
+            return self.pending_lambda
+
+        # Bias toward successful directions
+        raw_lambda = np.random.beta(self.alpha, self.beta)
+        smoothed_lambda = self.momentum * self.ema_lambda + (1 - self.momentum) * raw_lambda
+        
+        # Apply minimum step toward best recent lambda
+        if len(self.delta_history) > 0:
+            best_idx = np.argmin(self.delta_history)
+            best_lambda = self.lambda_history[best_idx]
+            step = max(self.min_step, 0.05 if self.delta_history[best_idx] < 0 else 0.02)
+            
+            if abs(smoothed_lambda - best_lambda) < step:
+                direction = 1 if (smoothed_lambda - best_lambda) >= 0 else -1
+                smoothed_lambda = best_lambda + direction * step
+
+        self.pending_lambda = np.clip(smoothed_lambda, 0, 1)
+        self.ema_lambda = smoothed_lambda
+        return self.pending_lambda
+
+    def update(self, current_acc):
+        # Track accuracy deltas
+        if len(self.accuracy_history) > 0:
+            delta_acc = current_acc - self.accuracy_history[-1]
+            self.delta_history.append(delta_acc)
+
+        self.lambda_history.append(self.pending_lambda)
+        self.accuracy_history.append(current_acc)
+        
+        # Maintain sliding window
+        if len(self.accuracy_history) > self.window_size:
+            self.lambda_history.pop(0)
+            self.accuracy_history.pop(0)
+            if len(self.delta_history) > 0:
+                self.delta_history.pop(0)
+        
+        # Update Beta distribution (inverted for attack optimization)
+        if len(self.delta_history) > 1:
+            current_delta = self.delta_history[-1]
+            
+            if current_delta < 0:  # Accuracy decreased
+                reward = 1.0
+            elif current_delta < 0.02:  # Small accuracy increase
+                reward = 0.3
+            else:  # Significant accuracy increase
+                reward = -0.5
+                
+            self.alpha = np.clip(self.alpha + reward, 1, 100)
+            self.beta = np.clip(self.beta - reward, 1, 100)

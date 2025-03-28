@@ -22,156 +22,150 @@ def check_state_dict(state_dict):
     print("State dictionary is valid.")
 
 
-def untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean, 
-                                 model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile, if_PGD=True,
-                                lambda_searcher=None, search_lambda=True):
+def untargeted_cos_budget_attack(
+    malicc, mali_clients, server, ben_grad_all, mal_user_grad_ben_mean,
+    model_name, num_classes, xp, hp, K, beta_, lambda_, adv_lr, percentile,
+    if_PGD=True, lambda_searcher=None, search_lambda=False
+):
     """Performs an untargeted cosine budget attack by optimizing malicious updates."""
 
-    
-    
-    adhoc_model_fn = partial(model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset'])
-    
+    adhoc_model_fn = partial(
+        model_utils.get_model(model_name)[0], num_classes=num_classes, dataset=hp['dataset']
+    )
+
     # Synchronize malicious client with the server
     malicc.synchronize_with_server(server)
     model0 = adhoc_model_fn().to(device)
     model0.load_state_dict(malicc.server_state)
-    
+
     # Test accuracy before attack
-    acc_results0 = malicc.feedback_on_attack(class_num=10).items()
-    
+    server_vali_acc = malicc.feedback_on_attack(class_num=10).items()
+
     # Compute cosine distances and log statistics
-    all_w = torch.stack([flat_dict(filter_trainable_state_dict(client.model)) for client in mali_clients])
-    print(f"all_state_dict shape {all_w.shape}")
-    
+    all_weights = torch.stack([
+        flat_dict(filter_trainable_state_dict(client.model)) for client in mali_clients
+    ])
+    print(f"All state_dict shape: {all_weights.shape}")
+
     # Compute the median norm of benign clients
-    norm_list = np.array([torch.norm(torch.tensor(grad), p=2).item() for grad in ben_grad_all])
+    norm_list = np.array([
+        torch.norm(torch.tensor(grad), p=2).item() for grad in ben_grad_all
+    ])
     benign_norm = np.median(norm_list)
-    
-    # Initialize benign mean model
+
+    # Initialize and restore benign mean model
     ben_mean_model = adhoc_model_fn().to(device)
-    # Restore benign mean weights and load into model
-    benign_mean_sd = restore_dict_grad_dict(mal_user_grad_ben_mean, malicc.server_state, malicc.model.state_dict())
+    benign_mean_sd = restore_dict_grad_dict(
+        mal_user_grad_ben_mean, malicc.server_state, malicc.model.state_dict()
+    )
     ben_mean_model.load_state_dict(benign_mean_sd)
-    # measure cos using trainable parameters w, instead of sd
     benign_mean_w = filter_trainable_state_dict(ben_mean_model)
-    
-    server_to_benign = cos_dist_w(flat_dict(benign_mean_sd), flat_dict(malicc.server_state)).detach().item()
-    cos_mean, cos_med, cos_std, cos_precentile, cos_to_mean = cos_pairs_and_mean(all_w, benign_mean_w, percentile=percentile)
-    xp.log({"cos_mean": cos_mean, 
-            "cos_med": cos_med, 
-            "cos_precentile": cos_precentile, 
-            "cos_std": cos_std, 
-            "server_to_benign": server_to_benign})
-    
+
+    server_to_benign = cos_dist_w(
+        flat_dict(benign_mean_sd), flat_dict(malicc.server_state)
+    ).detach().item()
+
+    cos_metrics = cos_pairs_and_mean(
+        all_weights, benign_mean_w, percentile=percentile
+    )
+    cos_mean, cos_med, cos_std, cos_percentile, cos_to_mean = cos_metrics
+
+    xp.log({
+        "cos_mean": cos_mean,
+        "cos_med": cos_med,
+        "cos_percentile": cos_percentile,
+        "cos_std": cos_std,
+        "server_to_benign": server_to_benign,
+    })
+
     # Prepare malicious client for attack
-    if not if_PGD:
-        adv_lr = 0.01
-        
-    malicc.reset_lr(new_lr=adv_lr)
-    
-    # Compute attack budget
-    budget = max(1e-8, cos_precentile)
-    
-    # malicc model load benign mean weights
+    malicc.reset_lr(new_lr=adv_lr if if_PGD else 0.01)
+    budget = max(1e-8, cos_percentile)
     malicc.model.load_state_dict(malicc.server_state)
-    
     acc_benign_mean = malicc.feedback_on_attack(class_num=10).items()
+    mali_benign_grads_cos = None
     
-    # Update malicious weights
-    if if_PGD:
-        loss_dict, crafted_w_cos = train_rev_w_cos(model = malicc.model, 
-                                                loader = malicc.sub_loader, 
-                                                optimizer = malicc.optimizer, 
-                                                scheduler = malicc.scheduler, 
-                                                epochs = K, 
-                                                model0 = model0, 
-                                                model1 = ben_mean_model, 
-                                                beta_ = beta_, 
-                                                budget = budget)
-    else:
-        loss_dict, crafted_w_cos = train_rev_w_cos_no_budget(model = malicc.model, 
-                                                loader = malicc.sub_loader, 
-                                                optimizer = malicc.optimizer, 
-                                                scheduler = malicc.scheduler, 
-                                                epochs = K-2, 
-                                                model0 = model0, 
-                                                model1 = ben_mean_model, 
-                                                beta_ = beta_, 
-                                                budget = budget)
+    # Train malicious model
+    train_fn = train_rev_w_cos if if_PGD else train_rev_w_cos_no_budget
+    loss_dict, trained_w_cos = train_fn(
+        model=malicc.model,
+        loader=malicc.sub_loader,
+        optimizer=malicc.optimizer,
+        scheduler=malicc.scheduler,
+        epochs=K if if_PGD else int(K*0.5),
+        model0=model0,
+        model1=ben_mean_model,
+        beta_=beta_,
+        budget=budget,
+    )
+
     # Evaluate attack progress
-    acc_results1 = malicc.feedback_on_attack(class_num=10).items()
-    
-    # check if the malicc model has nan or inf
+    mali_trained_vali_acc = malicc.feedback_on_attack(class_num=10).items()
+
+    # Check for NaN or Inf in model parameters
     for param in malicc.model.parameters():
         if torch.isnan(param).any():
             print(f"NaN detected in {param.shape}")
         if torch.isinf(param).any():
             print(f"Inf detected in {param.shape}")
-        
-        # Clamp values after the check
-        # param.data.clamp_(-1e6, 1e6)  # In-place operation
-    
+
     if if_PGD:
-        # Compute and normalize malicious gradient update
         mali_grad = get_model_update(malicc.sd, malicc.server_state)
         mali_grad_norm = torch.norm(flat_dict(mali_grad), p=2)
-        # print(f"benign norm {benign_norm}, mali norm {mali_grad_norm}")
-        xp.log({"benign norm": float(benign_norm)})
-        xp.log({"mali grad norm": float(mali_grad_norm)})
-        
-        norm_mali_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm 
-        
+        xp.log({"benign_norm": float(benign_norm), "mali_grad_norm": float(mali_grad_norm)})
 
-        if torch.isnan(norm_mali_flat).any():
-            print("crafted normalized_mali_flat has NA values!")
+        mali_grad_norm_flat = flat_dict(mali_grad) / (mali_grad_norm + 1e-9) * benign_norm
+        if torch.isnan(mali_grad_norm_flat).any():
+            print("Crafted normalized_mali_flat has NA values!")
 
-        
-        # # TODO optimizer search for norm_discount lambda
-        # norm_discount = lambda_searcher.update(s_t = malicc.server_state,
-        #                                        m = malicc.mali_sd_last, 
-        #                                        b = malicc.benign_sd_last)
-        # xp.log({"norm_discount": float(norm_discount)})
-        # norm_mali_flat *= norm_discount
-        # malicc.benign_sd_last = deepcopy(benign_mean_sd)
-        # malicc.mali_sd_last = deepcopy(malicc.server_state)
-        
-        # First-call detection
-        if not hasattr(untargeted_cos_budget_attack, '_initialized'):
-            # First-time initialization
-            untargeted_cos_budget_attack._initialized = True
-            print("First call detected - initializing lambda searcher")
+        # check the normized acc
+        normalized_sd = restore_dict_grad_flat(
+            mali_grad_norm_flat, malicc.server_state, malicc.model.state_dict()
+        )
+        malicc.model.load_state_dict(normalized_sd, strict=False)
+        mali_normalized_vali_acc = malicc.feedback_on_attack(class_num=10).items()
 
+        normalized_cos = cos_dist_w(
+            flat_dict(ben_mean_model.state_dict()), flat_dict(normalized_sd), eps=1e-9
+        )
+
+        if search_lambda:
+            if not hasattr(untargeted_cos_budget_attack, '_initialized'):
+                untargeted_cos_budget_attack._initialized = True
+                print("First call detected - initializing lambda searcher")
             lambda_ = lambda_searcher.choose_lambda()
+            lambda_searcher.update(next(iter(server_vali_acc))[1])
         else:
-            print("++++ iteration - lambda search")
-            lambda_ = lambda_searcher.choose_lambda()
-            print(f"Lambda before update: {lambda_searcher.pending_lambda}")  # Debugging output
-            lambda_searcher.update(next(iter(acc_results0))[1]) 
-            
-        xp.log({"lambda_": float(lambda_)})
+            mali_grad_norm_flat *= lambda_
 
-        norm_mali_flat *= lambda_
+        xp.log({"lambda_": float(lambda_)})
         
-        # Scale with lambda and update model
-        mali_sd = restore_dict_grad_flat(norm_mali_flat, malicc.server_state, malicc.model.state_dict())
-        sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
+        benign_grad = get_model_update(benign_mean_sd, malicc.server_state)
+        mali_benign_grads_cos = cos_dist_w(mali_grad_norm_flat, flat_dict(benign_grad)).detach().item()
+                
+        mali_sd = restore_dict_grad_flat(
+            mali_grad_norm_flat, malicc.server_state, malicc.model.state_dict()
+        )
     else:
-        # no normalization process for AB
         mali_sd = malicc.sd
-        sd_cos = cos_dist_w(flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9)
-        
-    # Try validate before loading
+
+    # Compute final cosine similarity
+    scaled_cos = cos_dist_w(
+        flat_dict(ben_mean_model.state_dict()), flat_dict(mali_sd), eps=1e-9
+    )
+
+    # Validate before loading
     try:
         check_state_dict(mali_sd)
     except ValueError as e:
-        print(f"Warning mali_sd: {e}") 
-    
+        print(f"Warning mali_sd: {e}")
+
     malicc.model.load_state_dict(mali_sd, strict=False)
-    
-    # Evaluate final attack results
-    acc_results2 = malicc.feedback_on_attack(class_num=10).items()
-    
-    return budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd, float(sd_cos), float(crafted_w_cos)
+    mali_scaled_vali_acc = malicc.feedback_on_attack(class_num=10).items()
+
+    return budget, server_vali_acc, mali_trained_vali_acc, mali_scaled_vali_acc, mali_normalized_vali_acc, \
+        acc_benign_mean, mali_sd, float(scaled_cos), float(trained_w_cos), float(mali_benign_grads_cos), float(normalized_cos)
+
 
 
 def stable_log_cosh_cross_entropy_loss(preds, targets):

@@ -171,7 +171,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         # lambda_searcher = OnlineLambdaOptimizer(lambda_init=0.5,
         #                                         tol=1e-5,
         #                                         device=device)
-        lambda_searcher = AttackThompsonSampling(alpha=1, beta=1, window_size=50, momentum=0.4, min_step=0.05) 
+        lambda_searcher = VibrationAwareAttackSampler(alpha=1, beta=1, window_size=50, momentum=0.4, min_step=0.05) 
         
     if hp["attack_rate"] == 0:
         clients = [Client(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset=hp['dataset'])
@@ -286,7 +286,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                     if_PGD = False
             
             if hp["attack_method"] == "untargeted_cos":
-                budget, acc_results0, acc_results1, acc_results2, acc_benign_mean, mali_sd, sd_cos, w_cos = \
+                budget, server_vali_acc, mali_trained_vali_acc, mali_scaled_vali_acc, mali_normalized_vali_acc, \
+                    acc_benign_mean, mali_sd, scaled_cos, trained_cos, mali_benign_grads_cos, normalized_cos = \
                                 untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, 
                                 mal_user_grad_ben_mean, model_name, num_classes, xp, hp,
                                 K = hp.get("ours_K", 6),
@@ -295,7 +296,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                 adv_lr = hp["adv_lr"], 
                                 percentile = hp["percentile"],
                                 if_PGD=if_PGD,
-                                lambda_searcher= lambda_searcher)
+                                lambda_searcher = lambda_searcher,
+                                search_lambda = False)
                 
                 # sd_list = decompose_sd(mali_sd, num=len(mali_clients), budget=sd_cos*10)
                 # for i in range(len(mali_clients)):
@@ -304,15 +306,16 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 for client in mali_clients:
                     client.mali_sd = mali_sd
                 
-
-                
-                xp.log({"vali_server": next(iter(acc_results0))[1]})
-                xp.log({"acc_benign_mean": next(iter(acc_benign_mean))[1]})
-                xp.log({"mali_vali_acc": next(iter(acc_results1))[1]})
-                xp.log({"mali_vali_norm_acc": next(iter(acc_results2))[1]})
-                xp.log({"attack_budget": budget})
-                xp.log({"state_dict_cos": sd_cos})
-                xp.log({"trainable_params_cos": w_cos})
+                xp.log({"server_vali_acc": next(iter(server_vali_acc))[1]})
+                xp.log({"benign_mean_vali_acc": next(iter(acc_benign_mean))[1]})
+                xp.log({"mali_trained_vali_acc": next(iter(mali_trained_vali_acc))[1]})
+                xp.log({"mali_normalized_vali_acc": next(iter(mali_normalized_vali_acc))[1]})
+                xp.log({"mali_scaled_vali_acc": next(iter(mali_scaled_vali_acc))[1]})
+                xp.log({"attack_cos_budget": budget})
+                xp.log({"trained_cos": trained_cos}) # named parameters
+                xp.log({"normalized_cos": normalized_cos}) # state dict
+                xp.log({"scaled_cos": scaled_cos}) # state dict
+                xp.log({"mali_benign_grads_cos": mali_benign_grads_cos})
                 
         # Both benign and malicous clients compute weight update
         
