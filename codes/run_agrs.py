@@ -167,7 +167,8 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         v_layers_indices = sorted(range(len(sensitivity_scores)), key=lambda i: sensitivity_scores[i], reverse=True)
         xp.log({"v_layers_indices": v_layers_indices})
         logger.info(f"pre-assessment layers order: {', '.join([layer_names[i] for i in v_layers_indices])}")
-    elif hp["attack_method"] == "untargeted_cos":
+        
+    if hp["attack_method"] == "untargeted_cos":
         # lambda_searcher = OnlineLambdaOptimizer(lambda_init=0.5,
         #                                         tol=1e-5,
         #                                         device=device)
@@ -327,7 +328,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
 
         
         server_lr = hp.get("server_lr", 1)
-        mali_select_p, selected_clients_ids = server.server_aggregation(aggregation_mode=hp["aggregation_mode"],
+        mali_select_p, selected_clients_ids, clients_weights = server.server_aggregation(aggregation_mode=hp["aggregation_mode"],
                                   clients=participating_clients,
                                   server_lr = server_lr,
                                   mali_ratio=hp["attack_rate"],
@@ -340,6 +341,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         
         xp.log({f"select_percentage": mali_select_p})
         xp.log({"select_ids": {c_round: selected_clients_ids}})
+        xp.log({"clients_weights": {c_round: clients_weights}})
             
         if xp.is_log_round(c_round):
             xp.log({'communication_round': c_round,

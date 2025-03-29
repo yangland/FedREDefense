@@ -1289,6 +1289,7 @@ def reduce_average(target, sources):
     for name in target:
         target[name].data = torch.mean(torch.stack([source[name].detach().float() for source in sources]), dim=0).clone()
     
+    return [1/len(sources)] * len(sources) 
 
 def reduce_median(target, sources):
     for name in target:
@@ -1333,6 +1334,8 @@ def reduce_normbound(target, server_sd, clients, mali_ratio):
     
     for name in target:
         target[name].data = clipped_w[name].data.clone()
+    
+    return [1/len(user_num)] * len(user_num) 
 
 
 
@@ -1831,16 +1834,22 @@ def reduce_fltrust(target, sources, server_update):
         FLTrustTotalScore += client_trust_score
         trust_score_list.append(client_trust_score)
         clip_value_list.append(client_clipped_value)
+    
+    print("trust_score_list", trust_score_list)
                     
     trust_score_list = [x / FLTrustTotalScore  for x in trust_score_list]
     # weighted average of grad
     fltrust_weights_list = [a*b for a,b in zip(trust_score_list, clip_value_list)]
     fltrust_weights = dict(zip(list(range(client_num)), fltrust_weights_list))
     
-    wv_normal = [x / sum(fltrust_weights) for x in fltrust_weights]
-    
+    # wv_normal = [x / sum(fltrust_weights) for x in fltrust_weights]
+    wv_normal = [x / (sum(fltrust_weights.values()) + 1e-9) for x in fltrust_weights.values()]
+
     reduce_weighted(target, sources, torch.tensor(wv_normal).to(device))
-    return wv_normal
+    
+    clients_weights = [t.cpu().item() for t in wv_normal]  # Moving each tensor to CPU and converting to float
+
+    return clients_weights
 
 def get_fltrust_rootds(train_ds, sample_size):
     indices = random.sample(list(range(len(train_ds))), sample_size) 
@@ -2374,7 +2383,7 @@ def reduce_rfa(target, sources):
     
     reduce_weighted(target, sources, stacked_weights)
     
-    return stacked_weights
+    return stacked_weights.tolist()
 
 
 def weighted_normalized_dict(client_weights1, client_weights2, a):

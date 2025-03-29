@@ -202,18 +202,19 @@ class Server(Device):
             sd0 = deepcopy(self.sd_dict[model_name])
             sd1 = deepcopy(self.sd_dict[model_name])            
             
+            clients_weights = []
             if not if_two_steps:
                 if aggregation_mode=="FedAVG":
-                    reduce_average(target=sd1, sources=[
+                   clients_weights =  reduce_average(target=sd1, sources=[
                             client.sd for client in clients if client.model_name == model_name])
                 elif aggregation_mode=="median":
                     reduce_median(target=sd1, sources=[
                             client.sd for client in clients if client.model_name == model_name])
                 elif aggregation_mode=="NormBound":    
-                    reduce_normbound(target=sd1, 
-                                    server_sd=self.sd_dict[model_name], 
-                                    clients=clients, 
-                                    mali_ratio=mali_ratio)
+                    clients_weights = reduce_normbound(target=sd1, 
+                                        server_sd=self.sd_dict[model_name], 
+                                        clients=clients, 
+                                        mali_ratio=mali_ratio)
                 elif aggregation_mode == "krum":
                     mali_select_p, selected_clients_ids = self.apply_krum_aggregation(clients, 
                                                 mali_ratio, 
@@ -237,12 +238,12 @@ class Server(Device):
                                                 noise=0.001,
                                                 turn=0)
                 elif aggregation_mode == "rfa":
-                    reduce_rfa(target=sd1,
-                                sources=[client.sd for client in clients if client.model_name == model_name])  
+                    clients_weights = reduce_rfa(target=sd1,
+                                    sources=[client.sd for client in clients if client.model_name == model_name])  
 
                 elif aggregation_mode == "fltrust":
-                    self.fltrust(clients, root_loader=fltrust_root_dl, epochs=fltrust_epoches)
-            
+                    clients_weights = self.fltrust(clients, root_loader=fltrust_root_dl, epochs=fltrust_epoches)
+                
                 elif aggregation_mode == "2steps_flame":
                     mali_select_p, selected_clients_ids = twosteps_flame(target=sd1, 
                                             sources=[client.sd for client in clients if client.model_name == model_name],
@@ -254,10 +255,10 @@ class Server(Device):
                                                 v_layers_indices = v_layers_indices)  
                     
                 elif aggregation_mode == "2steps_rfa":     
-                    twosteps_rfa(target=sd1,
-                                 sources=[client.sd for client in clients if client.model_name == model_name],
-                                 v_layers_indices = v_layers_indices, 
-                                 alpha = 0.7)             
+                   clients_weights = twosteps_rfa(target=sd1,
+                                    sources=[client.sd for client in clients if client.model_name == model_name],
+                                    v_layers_indices = v_layers_indices, 
+                                    alpha = 0.7)             
             else:
                 sources1 = [filter_state_dict(client.sd, v_layers_indices) for client in clients if client.model_name == model_name]
                 non_v_layers_indices = [item for item in list(range(layer_num)) if item not in v_layers_indices]  
@@ -315,7 +316,7 @@ class Server(Device):
             if list(selected_clients_ids) !=[]:
                 intersection = set(selected_clients_ids) & set(mali_ids_all)
                 mali_select_p = (len(intersection) / len(selected_clients_ids))
-            return mali_select_p, selected_clients_ids
+            return mali_select_p, selected_clients_ids, clients_weights
 
     def fedavg(self, clients):
         unique_client_model_names = np.unique(
@@ -453,20 +454,23 @@ class Server(Device):
         
         unique_client_model_names = np.unique([client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_fltrust(  target=self.sd_dict[model_name],
-                             sources=[client.sd for client in clients if client.model_name == model_name],
-                             server_update= server_update)
+            client_weights = reduce_fltrust(  target=self.sd_dict[model_name],
+                                            sources=[client.sd for client in clients if client.model_name == model_name],
+                                            server_update= server_update)
         
         # restore the server model
         self.model.load_state_dict(sd_before)
+        return client_weights
+
 
     def rfa(self, clients):
         unique_client_model_names = np.unique(
             [client.model_name for client in clients])
         for model_name in unique_client_model_names:
-            reduce_rfa(target=self.sd_dict[model_name],
+            client_weights =  reduce_rfa(target=self.sd_dict[model_name],
                              sources=[client.sd for client in clients if client.model_name == model_name])        
 
+        return client_weights
 
 
     def pre_assessment(self, model_name, num_classes, optimizer_fn, dataset, args, initial_model_state):
