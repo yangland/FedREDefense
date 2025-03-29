@@ -2650,3 +2650,19 @@ def decompose_tensor(a, k, U, eps=1e-8):
         components.append(v_flat.reshape(original_shape))
     
     return components
+
+
+def restore_dict_w_flat(param_flat, model):
+    # not affect the model data
+    restored_w = {}
+    start = 0
+    param_names = {name for name, _ in model.named_parameters()}
+    # print("param_names", param_names)
+    for name, param in model.state_dict().items():
+        if name in param_names:
+            num_elements = param.numel()
+            restored_w[name] = param_flat[start:start + num_elements].view(param.shape)                          
+            start += num_elements
+        else:
+            restored_w[name] = param
+    return restored_w

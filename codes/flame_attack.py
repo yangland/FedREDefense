@@ -5,7 +5,7 @@ import models as model_utils
 from utils import restore_dict_grad_dict, cos_pairs_and_mean, \
  flat_dict, filter_trainable_state_dict,  restore_dict_grad_flat, \
      cos_dist_w, eval_epoch, cos_dist_w, weighted_avg_budget_cos, \
-         get_model_update, parameters_dict_to_vector, craft_tensor, state_dict_to_w
+         get_model_update, parameters_dict_to_vector, craft_tensor, state_dict_to_w, restore_dict_w_flat
 from torch import nn
 from torch.nn import functional as F
 from copy import deepcopy
@@ -362,17 +362,5 @@ def train_rev_w_cos_no_budget(model, loader, optimizer, scheduler, epochs, model
     return {"loss": running_loss / samples}, crafted_cos_d
 
 
-def restore_dict_w_flat(param_flat, model):
-    restored_w = {}
-    start = 0
-    param_names = {name for name, _ in model.named_parameters()}
-    # print("param_names", param_names)
-    for name, param in model.state_dict().items():
-        if name in param_names:
-            num_elements = param.numel()
-            restored_w[name] = param_flat[start:start + num_elements].view(param.shape)                          
-            start += num_elements
-        else:
-            restored_w[name] = param
-    return restored_w
+
 

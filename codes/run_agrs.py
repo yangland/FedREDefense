@@ -16,7 +16,8 @@ import logging
 import shutil
 import datetime
 from csv_logging import CsvLogging
-from our_attack import *
+from flame_attack import *
+from fltrust_attack import *
 import data_f, models
 from search_algo import *
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -173,7 +174,9 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         #                                         tol=1e-5,
         #                                         device=device)
         lambda_searcher = VibrationAwareAttackSampler(alpha=1, beta=1, window_size=50, momentum=0.4, min_step=0.05) 
-        
+    elif hp["attack_method"] == "fltrust_att":
+        fltrust_attacker = FLTrustAttack()
+    
     if hp["attack_rate"] == 0:
         clients = [Client(model_name, optimizer_fn, loader, idnum=i, num_classes=num_classes, dataset=hp['dataset'])
                    for i, (loader, model_name) in enumerate(zip(client_loaders, model_names))]
@@ -265,7 +268,7 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
         xp.log({"participating_clients": np.array(
             [c.id for c in participating_clients])})
         # For attack methods that require benign update from clients to construct the malicious upates
-        if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP", "untargeted_cos"] \
+        if hp["attack_method"] in ["Fang", "Min-Max", "Min-Sum", "KrumAtt", "UAM", "AOP", "untargeted_cos", "fltrust_att"] \
             and hp["attack_method"]!="NO" \
             and hp["attack_rate"]!=0:
             # mali clients get benign grads
@@ -299,14 +302,10 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                                 if_PGD=if_PGD,
                                 lambda_searcher = lambda_searcher,
                                 search_lambda = False)
-                
-                # sd_list = decompose_sd(mali_sd, num=len(mali_clients), budget=sd_cos*10)
-                # for i in range(len(mali_clients)):
-                #     mali_clients[i].mali_sd = sd_list[i]  
                                   
                 for client in mali_clients:
                     client.mali_sd = mali_sd
-                
+                    
                 xp.log({"server_vali_acc": next(iter(server_vali_acc))[1]})
                 xp.log({"benign_mean_vali_acc": next(iter(acc_benign_mean))[1]})
                 xp.log({"mali_trained_vali_acc": next(iter(mali_trained_vali_acc))[1]})
@@ -317,6 +316,13 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                 xp.log({"normalized_cos": normalized_cos}) # state dict
                 xp.log({"scaled_cos": scaled_cos}) # state dict
                 xp.log({"mali_benign_grads_cos": mali_benign_grads_cos})
+            
+            elif hp["attack_method"] == "fltrust_att":
+                current_fltrust_attack_flat = fltrust_attacker.untargeted_fltrust_attack(ben_grad_all)
+                mali_sd = restore_dict_w_flat(current_fltrust_attack_flat, server.model)
+                
+                for client in mali_clients:
+                    client.mali_sd = mali_sd
                 
         # Both benign and malicous clients compute weight update
         

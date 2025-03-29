@@ -7,7 +7,7 @@ from utils import kd_loss, DiffAugment
 import sklearn.metrics.pairwise as smp
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from MADS import MADS
-from our_attack import train_rev_w_cos
+from flame_attack import train_rev_w_cos
 from copy import deepcopy
 import numpy as np
 from collections import defaultdict
@@ -131,7 +131,6 @@ class Server(Device):
         self.model = self.models[0]
         self.optimizer_fn = optimizer_fn
         self.optimizer = self.optimizer_fn(self.model.parameters())
-        
         self.fltrust_rootds = None
 
     def evaluate_ensemble(self, loader=None):
