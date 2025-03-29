@@ -120,12 +120,12 @@ def plot_validation_accuracies(file_path):
 
 def plot_gradient_norms(file_path):
     """Plots gradient norms from an .npz file."""
-    keys = ['benign_norm', 'mali_grad_norm']
+    keys = ['benign_grad_norm', 'mali_grad_norm']
     plot_metrics_from_npz(file_path, keys, "Gradient Norms Over Epochs", "Gradient Norm")
 
 def plot_cosine_similarities(file_path):
     """Plots cosine similarities from an .npz file."""
-    keys = ['attack_cos_budget','trained_cos', 'normalized_cos', 'scaled_cos', 'server_to_benign']
+    keys = ['attack_cos_budget','trained_cos', 'normalized_cos', 'scaled_cos', 'server_to_benign_cos']
     plot_metrics_from_npz(file_path, keys, "Cosine Dist Over Epochs", "Cosine Dist")
 
 def plot_vali_acc(file_path):
