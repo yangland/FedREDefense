@@ -20,6 +20,7 @@ from flame_attack import *
 from fltrust_attack import *
 import data_f, models
 from search_algo import *
+import experiment_manager as xpm
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 np.set_printoptions(precision=4, suppress=True)
@@ -290,18 +291,19 @@ def run_experiment(xp, xp_count, n_experiments, exp_id):
                     if_PGD = False
             
             if hp["attack_method"] == "untargeted_cos":
+                res_list = untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, 
+                    mal_user_grad_ben_mean, model_name, num_classes, xp, hp,
+                    K = hp.get("ours_K", 6),
+                    beta_ = hp["beta_"], 
+                    lambda_ = hp["lambda_"], 
+                    adv_lr = hp["adv_lr"], 
+                    percentile = hp["percentile"],
+                    if_PGD=if_PGD,
+                    lambda_searcher = lambda_searcher,
+                    search_lambda = False)
+                
                 budget, server_vali_acc, mali_trained_vali_acc, mali_scaled_vali_acc, mali_normalized_vali_acc, \
-                    acc_benign_mean, mali_sd, scaled_cos, trained_cos, mali_benign_grads_cos, normalized_cos = \
-                                untargeted_cos_budget_attack(malicc, mali_clients, server, ben_grad_all, 
-                                mal_user_grad_ben_mean, model_name, num_classes, xp, hp,
-                                K = hp.get("ours_K", 6),
-                                beta_ = hp["beta_"], 
-                                lambda_ = hp["lambda_"], 
-                                adv_lr = hp["adv_lr"], 
-                                percentile = hp["percentile"],
-                                if_PGD=if_PGD,
-                                lambda_searcher = lambda_searcher,
-                                search_lambda = False)
+                    acc_benign_mean, mali_sd, scaled_cos, trained_cos, mali_benign_grads_cos, normalized_cos = res_list
                                   
                 for client in mali_clients:
                     client.mali_sd = mali_sd

@@ -167,6 +167,8 @@ def untargeted_cos_budget_attack(
     malicc.model.load_state_dict(mali_sd, strict=False)
     mali_scaled_vali_acc = malicc.feedback_on_attack(class_num=10).items()
 
+    # acc_dict = {}
+
     return budget, server_vali_acc, mali_trained_vali_acc, mali_scaled_vali_acc, mali_normalized_vali_acc, \
         acc_benign_mean, mali_sd, float(scaled_cos), float(trained_w_cos), float(mali_benign_grads_cos), float(normalized_cos)
 
